@@ -6,6 +6,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 场景问题实体类
  */
@@ -33,7 +36,10 @@ public class ScenarioQuestion {
     @Column(name = "order_index")
     private Integer orderIndex;
 
-    @Column(name = "keywords", columnDefinition = "JSONB")
-    private String keywords;
+    @ElementCollection
+    @CollectionTable(name = "scenario_question_keywords", joinColumns = @JoinColumn(name = "question_id"))
+    @Column(name = "keyword")
+    @Builder.Default
+    private List<String> keywords = new ArrayList<>();
 
 }

@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Languages, Bell, User, MessageCircle } from 'lucide-vue-next'
+import { Languages, Bell, User, MessageCircle, Settings } from 'lucide-vue-next'
 import type { Scenario } from '@/types'
 
 interface Props {
   currentScenario: Scenario
   scenarios: Scenario[]
   statusText: string
-  currentView: 'scenarios' | 'practice' | 'summary'
+  currentView: 'scenarios' | 'practice' | 'summary' | 'settings'
 }
 
 defineProps<Props>()
 const emit = defineEmits<{
   selectScenario: [scenario: Scenario]
-  viewChange: [view: 'scenarios' | 'practice' | 'summary']
+  viewChange: [view: 'scenarios' | 'practice' | 'summary' | 'settings']
 }>()
 
 const dropdownOpen = ref(false)
@@ -23,7 +23,7 @@ const handleSelectScenario = (sc: Scenario) => {
   dropdownOpen.value = false
 }
 
-const handleViewChange = (view: 'scenarios' | 'practice' | 'summary') => {
+const handleViewChange = (view: 'scenarios' | 'practice' | 'summary' | 'settings') => {
   emit('viewChange', view)
 }
 </script>
@@ -33,7 +33,7 @@ const handleViewChange = (view: 'scenarios' | 'practice' | 'summary') => {
     <div class="flex items-center gap-4 md:gap-8">
       <div @click="handleViewChange('scenarios')" class="flex items-center gap-2.5 cursor-pointer">
         <div class="w-8 h-8 flex items-center justify-center bg-[#0F7B6B] rounded-xl text-white shadow-sm">
-          <MessageCircle class="w-5 h-5 fill-white text-[#0F7B6B]" />
+          <MessageCircle class="w-5 h-5 text-white" />
         </div>
         <span class="font-display text-xl font-bold tracking-tight text-[#006053]">LingoAI</span>
       </div>
@@ -79,6 +79,14 @@ const handleViewChange = (view: 'scenarios' | 'practice' | 'summary') => {
     </div>
 
     <div class="flex items-center gap-3">
+      <button
+        @click="handleViewChange('settings')"
+        class="w-10 h-10 flex items-center justify-center rounded-full bg-[#E6F4F1] hover:bg-[#b4ffed]/30 border border-[#bdc9c5] text-[#006053] transition-all cursor-pointer shadow-sm"
+        :class="{ 'bg-[#b4ffed]': currentView === 'settings' }"
+        title="设置"
+      >
+        <Settings class="w-5 h-5" />
+      </button>
       <div class="relative">
         <button
           @click="dropdownOpen = !dropdownOpen"

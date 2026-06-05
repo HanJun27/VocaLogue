@@ -1,21 +1,33 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import Header from '@/components/Header.vue'
 import ChatArea from '@/components/ChatArea.vue'
 import ControlPanel from '@/components/ControlPanel.vue'
 import PronunciationModal from '@/components/PronunciationModal.vue'
 import ScenarioSelection from '@/components/ScenarioSelection.vue'
 import PracticeSummary from '@/components/PracticeSummary.vue'
+import SettingsPage from '@/components/SettingsPage.vue'
 import { SCENARIOS, MOCK_RATING_DATABASE } from '@/scenariosData'
 import type { DialectMessage, Scenario, PronunciationScore, GrammarFeedback } from '@/types'
-import { Award } from 'lucide-vue-next'
+import { Award, AlertCircle, CheckCircle2 } from 'lucide-vue-next'
 import api from '@/api'
+import { 
+  getBrowserCapabilities, 
+  getCompatibilityMessage,
+  type BrowserCapabilities 
+} from '@/utils/browserCompat'
+import { voiceService } from '@/services/voice/VoiceService'
+
+// 浏览器兼容性检测
+const browserCapabilities = ref<BrowserCapabilities | null>(null)
+const showCompatBanner = ref(false)
+const compatMessage = ref('')
 
 // API 模式控制（当前为演示使用本地模拟数据）
 const USE_API_MODE = ref(false)
 const currentSessionId = ref<string | null>(null)
 
-const currentView = ref<'scenarios' | 'practice' | 'summary'>('scenarios')
+const currentView = ref<'scenarios' | 'practice' | 'summary' | 'settings'>('scenarios')
 const currentScenario = ref<Scenario>(SCENARIOS[0])
 const messages = ref<DialectMessage[]>([])
 const currentQuestionIndex = ref(0)
@@ -34,18 +46,6 @@ const currentTranscript = ref('')
 const recognitionInstance = ref<any>(null)
 
 const statusTime = ref('10:00')
-
-watch(currentScenario, (newScenario) => {
-  resetConversationForScenario(newScenario)
-}, { immediate: true })
-
-if ('speechSynthesis' in window) {
-  const handleEnd = () => {
-    isPlayingAudio.value = false
-    activeVoiceMessageId.value = null
-  }
-  window.speechSynthesis.addEventListener('end', handleEnd)
-}
 
 const resetConversationForScenario = (sc: Scenario) => {
   window.speechSynthesis?.cancel()
@@ -110,21 +110,79 @@ const speakAudio = (text: string, messageId: string) => {
   }
 }
 
+// 浏览器兼容性检测初始化
+onMounted(() => {
+  browserCapabilities.value = getBrowserCapabilities()
+  compatMessage.value = getCompatibilityMessage(browserCapabilities.value)
+  
+  // 如果有警告信息，显示兼容性提示
+  if (browserCapabilities.value.warnings.length > 0) {
+    showCompatBanner.value = true
+  }
+  
+  // 根据浏览器能力自动选择模式
+  if (browserCapabilities.value.recommendedMode === 'keyboard-only') {
+    isTypingMode.value = true
+  }
+  
+  console.log('[App] 浏览器兼容性:', browserCapabilities.value)
+})
+
+// 关闭兼容性提示
+const dismissCompatBanner = () => {
+  showCompatBanner.value = false
+}
+
+if ('speechSynthesis' in window) {
+  const handleEnd = () => {
+    isPlayingAudio.value = false
+    activeVoiceMessageId.value = null
+  }
+  window.speechSynthesis.addEventListener('end', handleEnd)
+}
+
+watch(currentScenario, (newScenario) => {
+  resetConversationForScenario(newScenario)
+}, { immediate: true })
+
 const handleToggleTranslation = (messageId: string) => {
   messages.value = messages.value.map((msg) =>
     msg.id === messageId ? { ...msg, showTranslation: !msg.showTranslation } : msg
   )
 }
 
+/**
+ * 开始录音 - 根据浏览器能力选择合适的方案
+ */
 const startRecording = () => {
-  const SpeechRecognition =
-    (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
-
-  if (!SpeechRecognition) {
-    alert('您的浏览器不支持 Web Speech 语音识别技术。我们推荐您切换到右侧的键盘模式进行文字回答！')
+  // 检查浏览器能力
+  if (!browserCapabilities.value) {
+    browserCapabilities.value = getBrowserCapabilities()
+  }
+  
+  // 如果不支持语音，提示用户切换键盘模式
+  if (browserCapabilities.value.recommendedMode === 'keyboard-only') {
+    alert('您的浏览器不支持语音功能。请使用键盘输入模式进行回答！')
     isTypingMode.value = true
     return
   }
+  
+  // Firefox 或其他不支持 Web Speech 的浏览器，使用实时音频流模式
+  if (!browserCapabilities.value.hasSpeechRecognition) {
+    // 这里应该连接 Realtime API 进行语音对话
+    // 由于当前是演示模式，暂时提示用户使用键盘输入
+    if (browserCapabilities.value.isFirefox) {
+      alert('Firefox 浏览器不支持 Web Speech API。\n\n请使用键盘输入模式，或切换到 Chrome/Edge 浏览器获得完整语音体验。\n\n提示：完整语音功能需要配置 Realtime API（OpenAI/豆包）。')
+    } else {
+      alert('您的浏览器不支持语音识别功能。请使用键盘输入模式！')
+    }
+    isTypingMode.value = true
+    return
+  }
+  
+  // Chrome/Edge 等支持 Web Speech 的浏览器
+  const SpeechRecognition =
+    (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
 
   try {
     window.speechSynthesis?.cancel()
@@ -421,25 +479,83 @@ const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary') => {
 
 <template>
   <div class="bg-slate-50 text-slate-900 min-h-screen flex flex-col font-sans overflow-x-hidden antialiased select-none">
-    <Header
-      :current-scenario="currentScenario"
-      :scenarios="SCENARIOS"
-      :status-text="`本轮训练 ${statusTime}`"
-      :current-view="currentView"
-      @select-scenario="handleSelectScenario"
-      @view-change="handleViewChange"
-    />
+    <!-- 浏览器兼容性提示 Banner -->
+    <div 
+      v-if="showCompatBanner && browserCapabilities" 
+      class="fixed top-0 left-0 right-0 z-[100] px-4 py-3 shadow-lg"
+      :class="[
+        browserCapabilities.recommendedMode === 'keyboard-only' 
+          ? 'bg-red-50 border-b border-red-200' 
+          : 'bg-amber-50 border-b border-amber-200'
+      ]"
+    >
+      <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <AlertCircle 
+            v-if="browserCapabilities.recommendedMode === 'keyboard-only'" 
+            class="w-5 h-5 text-red-500" 
+          />
+          <AlertCircle 
+            v-else 
+            class="w-5 h-5 text-amber-500" 
+          />
+          <div class="flex-1">
+            <p 
+              class="text-sm font-medium"
+              :class="[
+                browserCapabilities.recommendedMode === 'keyboard-only' 
+                  ? 'text-red-700' 
+                  : 'text-amber-700'
+              ]"
+            >
+              {{ compatMessage }}
+            </p>
+            <p 
+              v-if="browserCapabilities.isFirefox" 
+              class="text-xs mt-1 text-amber-600"
+            >
+              推荐使用 Chrome 或 Edge 浏览器获得最佳语音体验
+            </p>
+          </div>
+        </div>
+        <button 
+          @click="dismissCompatBanner"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+          :class="[
+            browserCapabilities.recommendedMode === 'keyboard-only' 
+              ? 'bg-red-100 hover:bg-red-200 text-red-700' 
+              : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
+          ]"
+        >
+          我知道了
+        </button>
+      </div>
+    </div>
 
-    <main class="flex-1 w-full flex flex-col relative h-[calc(100vh-4rem)]">
-      <ScenarioSelection
-        v-if="currentView === 'scenarios'"
+    <!-- 设置页面独立显示 -->
+    <SettingsPage v-if="currentView === 'settings'" @go-back="handleViewChange('scenarios')" />
+
+    <!-- 其他页面 -->
+    <template v-else>
+      <Header
+        :current-scenario="currentScenario"
         :scenarios="SCENARIOS"
+        :status-text="`本轮训练 ${statusTime}`"
+        :current-view="currentView"
         @select-scenario="handleSelectScenario"
         @view-change="handleViewChange"
-        @open-history="ratingOpen = true"
       />
 
-      <template v-else-if="currentView === 'practice'">
+      <main class="flex-1 w-full flex flex-col relative h-[calc(100vh-4rem)]">
+        <ScenarioSelection
+          v-if="currentView === 'scenarios'"
+          :scenarios="SCENARIOS"
+          @select-scenario="handleSelectScenario"
+          @view-change="handleViewChange"
+          @open-history="ratingOpen = true"
+        />
+
+        <template v-else-if="currentView === 'practice'">
         <div class="flex-1 flex flex-col relative h-full">
           <div class="px-5 md:px-12 pt-4 flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -507,36 +623,37 @@ const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary') => {
         @restart-practice="() => { resetConversationForScenario(currentScenario); currentView = 'practice' }"
         @go-back-to-scenarios="handleViewChange('scenarios')"
       />
-    </main>
+      </main>
 
-    <PronunciationModal
-      v-if="ratingOpen && currentRating"
-      :score="currentRating"
-      @close="ratingOpen = false"
-    />
+      <PronunciationModal
+        v-if="ratingOpen && currentRating"
+        :score="currentRating"
+        @close="ratingOpen = false"
+      />
 
-    <div
-      v-if="ratingOpen && !currentRating"
-      class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-sm z-50 flex items-center justify-center p-4"
-    >
-      <div class="absolute inset-0" @click="ratingOpen = false"></div>
-      <div class="relative bg-white rounded-2xl w-full max-w-sm p-6 overflow-hidden shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150 z-10 flex flex-col gap-4 text-center items-center">
-        <span class="p-3 rounded-full bg-slate-100 text-slate-400">
-          <Award class="w-8 h-8" />
-        </span>
-        <div>
-          <h3 class="font-display font-bold text-slate-800 text-base mb-1">暂无评测记录</h3>
-          <p class="font-sans text-xs text-slate-500 leading-relaxed">
-            请先在 【对话练习】 中回答面试官提问。回答提交后，LingoAI 学术评测算法将自动生成高精确度的发音和语法质量测绘报告！
-          </p>
+      <div
+        v-if="ratingOpen && !currentRating"
+        class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      >
+        <div class="absolute inset-0" @click="ratingOpen = false"></div>
+        <div class="relative bg-white rounded-2xl w-full max-w-sm p-6 overflow-hidden shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150 z-10 flex flex-col gap-4 text-center items-center">
+          <span class="p-3 rounded-full bg-slate-100 text-slate-400">
+            <Award class="w-8 h-8" />
+          </span>
+          <div>
+            <h3 class="font-display font-bold text-slate-800 text-base mb-1">暂无评测记录</h3>
+            <p class="font-sans text-xs text-slate-500 leading-relaxed">
+              请先在 【对话练习】 中回答面试官提问。回答提交后，LingoAI 学术评测算法将自动生成高精确度的发音和语法质量测绘报告！
+            </p>
+          </div>
+          <button
+            @click="ratingOpen = false"
+            class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
+          >
+            我知道了
+          </button>
         </div>
-        <button
-          @click="ratingOpen = false"
-          class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
-        >
-          我知道了
-        </button>
       </div>
-    </div>
+    </template>
   </div>
 </template>

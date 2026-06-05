@@ -75,7 +75,7 @@ public class DataInitializer implements CommandLineRunner {
                         .questionText("That is wonderful. Since you mentioned React, can you explain the critical differences between Server Components and Client Components in React 19, and when to use each?")
                         .questionTranslation("太赞了。既然你提到了 React，你能解释一下 React 19 中服务端组件和客户端组件的关键区别，以及何时使用它们吗？")
                         .orderIndex(1)
-                        .keywords("[]")
+                        .keywords(Arrays.asList("React", "Server Components", "Client Components"))
                         .build(),
                     ScenarioQuestion.builder()
                         .id("int_q2")
@@ -83,7 +83,7 @@ public class DataInitializer implements CommandLineRunner {
                         .questionText("Excellent clarity. Now, regarding CSS and design systems, how do you manage utility-first styles in Tailwind CSS to maintain highly modular and customizable responsive UI layers?")
                         .questionTranslation("极其清晰的表述。那么，有关 CSS 和设计系统，你如何管理 Tailwind CSS 中的实用优先样式，以维护高度模块化的响应式 UI 界面？")
                         .orderIndex(2)
-                        .keywords("[]")
+                        .keywords(Arrays.asList("CSS", "Tailwind CSS", "Design System"))
                         .build(),
                     ScenarioQuestion.builder()
                         .id("int_q3")
@@ -91,7 +91,7 @@ public class DataInitializer implements CommandLineRunner {
                         .questionText("Perfect. Finally, in high-traffic applications, how do you diagnostic and optimize slow re-renders using standard React dev tools or profiling hooks?")
                         .questionTranslation("完美。最后一个问题，在高流量应用中，你如何通过开发者工具诊断并优化缓慢的重绘现象？")
                         .orderIndex(3)
-                        .keywords("[]")
+                        .keywords(Arrays.asList("performance", "React DevTools", "profiling"))
                         .build()
                 );
 
@@ -102,7 +102,7 @@ public class DataInitializer implements CommandLineRunner {
                         .questionText("Excellent choice. Our chef recommends the pan-seared ribeye steak or the creamy garlic seafood pasta today. What would you like to have for your main course?")
                         .questionTranslation("优秀的选项。我们的大厨今天推荐香煎肋眼牛排或奶油蒜蓉海鲜面。您的主菜想吃点什么呢？")
                         .orderIndex(1)
-                        .keywords("[]")
+                        .keywords(Arrays.asList("food", "menu", "order"))
                         .build(),
                     ScenarioQuestion.builder()
                         .id("res_q2")
@@ -110,7 +110,7 @@ public class DataInitializer implements CommandLineRunner {
                         .questionText("Perfect! And how would you like your steak done? We also offer various delicious sides like truffle fries or roasted asparagus.")
                         .questionTranslation("完美！您的牛排需要几分熟？我们还提供黑松露薯条或烤芦笋等多种可口配菜。")
                         .orderIndex(2)
-                        .keywords("[]")
+                        .keywords(Arrays.asList("steak", "sides", "cooking"))
                         .build()
                 );
 
@@ -121,7 +121,7 @@ public class DataInitializer implements CommandLineRunner {
                         .questionText("That sounds promising. However, our user engagement rate in some markets saw a slight decline. What adjustments should we introduce in the upcoming sprint to optimize this?")
                         .questionTranslation("这听起来很有前景。然而，我们在某些市场的用户参与率出现了轻微下滑。在接下来的迭代中，我们应该引入哪些调整来优化这一点？")
                         .orderIndex(1)
-                        .keywords("[]")
+                        .keywords(Arrays.asList("business", "metrics", "optimization"))
                         .build(),
                     ScenarioQuestion.builder()
                         .id("con_q2")
@@ -129,7 +129,7 @@ public class DataInitializer implements CommandLineRunner {
                         .questionText("Great suggestions. Let's compile these into our roadmap. Any other concerns or updates regarding our server scaling capability before we wrap up?")
                         .questionTranslation("极好的建议。我们将把这些整理进我们的路线图。在结束会议前，关于我们服务器扩容能力，大家还有其他疑问或更新汇报吗？")
                         .orderIndex(2)
-                        .keywords("[]")
+                        .keywords(Arrays.asList("roadmap", "scaling", "infrastructure"))
                         .build()
                 );
 

@@ -43,17 +43,7 @@ public class ScenarioDTO {
     public static class QuestionDTO {
         private String text;
         private String translation;
-        private List<KeywordDTO> keywords;
-
-        @Data
-        @Builder
-        @NoArgsConstructor
-        @AllArgsConstructor
-        public static class KeywordDTO {
-            private String phrase;
-            private String suggested;
-            private String explanation;
-        }
+        private List<String> keywords;
     }
 
     public static ScenarioDTO fromEntity(Scenario scenario, List<ScenarioQuestion> questions) {
@@ -61,6 +51,7 @@ public class ScenarioDTO {
                 .map(q -> QuestionDTO.builder()
                         .text(q.getQuestionText())
                         .translation(q.getQuestionTranslation())
+                        .keywords(q.getKeywords())
                         .build())
                 .toList();
 

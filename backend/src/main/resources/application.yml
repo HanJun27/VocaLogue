@@ -7,7 +7,7 @@ spring:
 
   datasource:
     url: jdbc:postgresql://localhost:5432/lingoai
-    username: postgres
+    username: admin
     password: password
     driver-class-name: org.postgresql.Driver
 
