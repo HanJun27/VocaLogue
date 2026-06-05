@@ -7,13 +7,13 @@ interface Props {
   currentScenario: Scenario
   scenarios: Scenario[]
   statusText: string
-  currentView: 'scenarios' | 'practice' | 'summary' | 'settings'
+  currentView: 'scenarios' | 'practice' | 'summary' | 'settings' | 'history'
 }
 
 defineProps<Props>()
 const emit = defineEmits<{
   selectScenario: [scenario: Scenario]
-  viewChange: [view: 'scenarios' | 'practice' | 'summary' | 'settings']
+  viewChange: [view: 'scenarios' | 'practice' | 'summary' | 'settings' | 'history']
 }>()
 
 const dropdownOpen = ref(false)
@@ -23,13 +23,13 @@ const handleSelectScenario = (sc: Scenario) => {
   dropdownOpen.value = false
 }
 
-const handleViewChange = (view: 'scenarios' | 'practice' | 'summary' | 'settings') => {
+const handleViewChange = (view: 'scenarios' | 'practice' | 'summary' | 'settings' | 'history') => {
   emit('viewChange', view)
 }
 </script>
 
 <template>
-  <header class="glass-panel sticky top-0 z-50 flex-none h-16 shadow-[0px_4px_20px_rgba(15,123,107,0.04)] px-4 md:px-12 flex justify-between items-center transition-all">
+  <header class="glass-panel fixed top-0 left-0 right-0 z-50 flex-none h-16 shadow-[0px_4px_20px_rgba(15,123,107,0.04)] px-4 md:px-12 flex justify-between items-center transition-all">
     <div class="flex items-center gap-4 md:gap-8">
       <div @click="handleViewChange('scenarios')" class="flex items-center gap-2.5 cursor-pointer">
         <div class="w-8 h-8 flex items-center justify-center bg-[#0F7B6B] rounded-xl text-white shadow-sm">

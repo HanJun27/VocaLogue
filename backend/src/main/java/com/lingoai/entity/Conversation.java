@@ -38,7 +38,7 @@ public class Conversation {
     @Column(name = "overall_score")
     private Integer overallScore;
 
-    @Column(name = "summary_data", columnDefinition = "JSONB")
+    @Column(name = "summary_data", columnDefinition = "TEXT")
     private String summaryData;
 
 }

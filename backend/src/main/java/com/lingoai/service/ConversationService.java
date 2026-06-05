@@ -34,4 +34,14 @@ public interface ConversationService {
 
     void endConversation(String sessionId);
 
+    /**
+     * 获取用户的会话列表（按时间倒序）
+     */
+    List<ConversationDTO> getUserConversations(String userId);
+
+    /**
+     * 硬删除会话及其所有消息
+     */
+    void deleteConversation(String sessionId);
+
 }

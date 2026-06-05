@@ -64,7 +64,7 @@ const selectedDeviceLabel = computed(() => {
 </script>
 
 <template>
-  <div class="fixed bottom-0 left-0 w-full glass-panel border-t border-[#bdc9c5]/35 pt-4 pb-7 px-4 rounded-t-3xl z-40 shadow-[0_-8px_30px_rgba(15,123,107,0.06)]">
+  <div class="flex-none w-full glass-panel border-t border-[#bdc9c5]/35 pt-4 pb-7 px-4 rounded-t-3xl shadow-[0_-8px_30px_rgba(15,123,107,0.06)]">
     <div class="max-w-[850px] mx-auto flex flex-col gap-3">
       <div v-if="isRecording" class="w-full text-center px-4 py-2 bg-emerald-50/70 border border-emerald-100/50 rounded-lg text-emerald-950 text-xs font-medium font-sans max-w-lg mx-auto">
         <div class="flex items-center justify-center gap-1.5 mb-1 text-[10px] text-emerald-700 tracking-wider font-bold uppercase animate-pulse">

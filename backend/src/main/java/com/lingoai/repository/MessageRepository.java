@@ -16,4 +16,6 @@ public interface MessageRepository extends JpaRepository<Message, String> {
 
     long countByConversationIdAndRole(String conversationId, String role);
 
+    long countByConversationId(String conversationId);
+
 }

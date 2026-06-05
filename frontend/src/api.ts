@@ -1,4 +1,4 @@
-import type { Scenario, PronunciationScore, GrammarFeedback, AiChatResponse, AgentInfo, PipelineConfig } from './types'
+import type { Scenario, PronunciationScore, GrammarFeedback, AiChatResponse, AgentInfo, PipelineConfig, ConversationSummary } from './types'
 
 // API 基础配置
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -158,7 +158,7 @@ export const api = {
   },
 
   /**
-   * 结束会话
+   * 结束会话（生成总结，不是删除）
    */
   async endConversation(sessionId: string): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/api/conversations/${sessionId}`, {
@@ -169,6 +169,31 @@ export const api = {
     if (result.code !== 200) {
       throw new Error(result.message)
     }
+  },
+
+  /**
+   * 获取用户的会话列表
+   */
+  async getConversations(userId: string = 'anonymous'): Promise<ConversationSummary[]> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/conversations?userId=${encodeURIComponent(userId)}`,
+      { method: 'GET', headers: getHeaders() }
+    )
+    const result: ApiResponse<ConversationSummary[]> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
+    return result.data
+  },
+
+  /**
+   * 硬删除会话记录（含所有消息）
+   */
+  async deleteConversationRecords(sessionId: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/conversations/${sessionId}/records`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    })
+    const result: ApiResponse<null> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
   },
 
   /**

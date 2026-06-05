@@ -87,6 +87,20 @@ export interface AiChatRequest {
   pipelineConfig?: Partial<PipelineConfig>;
 }
 
+/** 会话摘要（用于历史列表） */
+export interface ConversationSummary {
+  sessionId: string;
+  userId: string;
+  scenarioId: string;
+  scenarioTitle: string;
+  scenarioEmoji: string;
+  scenarioTag: string;
+  startTime: string;
+  endTime: string | null;
+  overallScore: number | null;
+  messageCount: number;
+}
+
 /** AI 对话响应 */
 export interface AiChatResponse {
   userText: string;

@@ -90,10 +90,33 @@ public class ConversationController {
         return ResponseEntity.ok(ApiResponse.success(summary));
     }
 
+    /**
+     * 获取用户的会话列表
+     * GET /api/conversations?userId=xxx
+     */
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<ConversationDTO>>> getUserConversations(
+            @RequestParam(required = false, defaultValue = "anonymous") String userId) {
+        log.info("获取用户会话列表: userId={}", userId);
+        List<ConversationDTO> conversations = conversationService.getUserConversations(userId);
+        return ResponseEntity.ok(ApiResponse.success(conversations));
+    }
+
     @DeleteMapping("/{sessionId}")
     public ResponseEntity<ApiResponse<Void>> endConversation(@PathVariable String sessionId) {
         log.info("结束会话: sessionId={}", sessionId);
         conversationService.endConversation(sessionId);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /**
+     * 硬删除会话及其所有消息记录
+     * DELETE /api/conversations/{sessionId}/records
+     */
+    @DeleteMapping("/{sessionId}/records")
+    public ResponseEntity<ApiResponse<Void>> deleteConversationRecords(@PathVariable String sessionId) {
+        log.info("删除会话记录: sessionId={}", sessionId);
+        conversationService.deleteConversation(sessionId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 

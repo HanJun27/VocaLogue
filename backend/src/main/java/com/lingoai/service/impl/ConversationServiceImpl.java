@@ -10,8 +10,10 @@ import com.lingoai.dto.response.MessageDTO;
 import com.lingoai.dto.response.PracticeSummaryDTO;
 import com.lingoai.entity.Conversation;
 import com.lingoai.entity.Message;
+import com.lingoai.entity.Scenario;
 import com.lingoai.repository.ConversationRepository;
 import com.lingoai.repository.MessageRepository;
+import com.lingoai.repository.ScenarioRepository;
 import com.lingoai.service.ConversationService;
 import com.lingoai.service.ai.AiPipelineSettings;
 import com.lingoai.service.ai.ConversationPipelineService;
@@ -38,6 +40,7 @@ public class ConversationServiceImpl implements ConversationService {
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final ScenarioRepository scenarioRepository;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final ConversationPipelineService pipelineService;
@@ -328,6 +331,52 @@ public class ConversationServiceImpl implements ConversationService {
         // 从Redis删除
         redisTemplate.delete(SESSION_PREFIX + sessionId);
         redisTemplate.delete(AI_MODE_PREFIX + sessionId);
+    }
+
+    @Override
+    public List<ConversationDTO> getUserConversations(String userId) {
+        log.debug("获取用户会话列表: userId={}", userId);
+
+        List<Conversation> conversations = conversationRepository.findByUserIdOrderByStartTimeDesc(userId);
+
+        return conversations.stream().map(conv -> {
+            ConversationDTO dto = ConversationDTO.fromEntity(conv);
+
+            // 补充场景信息
+            scenarioRepository.findById(conv.getScenarioId()).ifPresent(scenario -> {
+                dto.setScenarioTitle(scenario.getTitle());
+                dto.setScenarioEmoji(scenario.getEmoji());
+                dto.setScenarioTag(scenario.getTag());
+            });
+
+            // 统计消息数
+            long msgCount = messageRepository.countByConversationId(conv.getId());
+            dto.setMessageCount(msgCount);
+
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void deleteConversation(String sessionId) {
+        log.debug("删除会话及其消息: sessionId={}", sessionId);
+
+        Conversation conversation = conversationRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("会话不存在: " + sessionId));
+
+        // 先删除所有关联的消息
+        List<Message> messages = messageRepository.findByConversationIdOrderByTimestampAsc(sessionId);
+        messageRepository.deleteAll(messages);
+
+        // 删除会话
+        conversationRepository.delete(conversation);
+
+        // 清理Redis缓存
+        redisTemplate.delete(SESSION_PREFIX + sessionId);
+        redisTemplate.delete(AI_MODE_PREFIX + sessionId);
+
+        log.info("会话已删除: sessionId={}", sessionId);
     }
 
 }

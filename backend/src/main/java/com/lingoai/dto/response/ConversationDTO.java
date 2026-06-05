@@ -23,11 +23,19 @@ public class ConversationDTO {
 
     private String scenarioId;
 
+    private String scenarioTitle;
+
+    private String scenarioEmoji;
+
+    private String scenarioTag;
+
     private LocalDateTime startTime;
 
     private LocalDateTime endTime;
 
     private Integer overallScore;
+
+    private Long messageCount;
 
     public static ConversationDTO fromEntity(Conversation conversation) {
         return ConversationDTO.builder()

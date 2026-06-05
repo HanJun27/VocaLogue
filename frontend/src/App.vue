@@ -7,8 +7,10 @@ import PronunciationModal from '@/components/PronunciationModal.vue'
 import ScenarioSelection from '@/components/ScenarioSelection.vue'
 import PracticeSummary from '@/components/PracticeSummary.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
+import ConversationSidebar from '@/components/ConversationSidebar.vue'
+import ConversationHistory from '@/components/ConversationHistory.vue'
 import { SCENARIOS, MOCK_RATING_DATABASE } from '@/scenariosData'
-import type { DialectMessage, Scenario, PronunciationScore, GrammarFeedback } from '@/types'
+import type { DialectMessage, Scenario, PronunciationScore, GrammarFeedback, ConversationSummary } from '@/types'
 import { Award, AlertCircle } from 'lucide-vue-next'
 import api, { API_BASE_URL, getHeaders } from '@/api'
 import { 
@@ -26,8 +28,8 @@ const browserCapabilities = ref<BrowserCapabilities | null>(null)
 const showCompatBanner = ref(false)
 const compatMessage = ref('')
 
-// API 模式控制（当前为演示使用本地模拟数据）
-const USE_API_MODE = ref(false)
+// API 模式控制（启用后端 API 集成）
+const USE_API_MODE = ref(true)
 const currentSessionId = ref<string | null>(null)
 
 // 真实语音大模型状态
@@ -42,7 +44,7 @@ const shouldUseVoiceAI = computed(() => {
   return configService.isConfigComplete()
 })
 
-const currentView = ref<'scenarios' | 'practice' | 'summary' | 'settings'>('scenarios')
+const currentView = ref<'scenarios' | 'practice' | 'summary' | 'settings' | 'history'>('scenarios')
 const currentScenario = ref<Scenario>(SCENARIOS[0])
 const messages = ref<DialectMessage[]>([])
 const currentQuestionIndex = ref(0)
@@ -68,7 +70,120 @@ const whisperRecordingBlob = ref<Blob | null>(null)
 const audioDevices = ref<{ deviceId: string; groupId: string; kind: string; label: string }[]>([])
 const selectedAudioDeviceId = ref(configService.getConfig().audioInputDeviceId)
 
+// 对话记录列表状态
+const conversationsList = ref<ConversationSummary[]>([])
+const conversationsLoading = ref(false)
+
 const statusTime = ref('10:00')
+
+/**
+ * 加载对话记录列表
+ */
+const loadConversations = async () => {
+  conversationsLoading.value = true
+  try {
+    const userId = 'anonymous'
+    const convs = await api.getConversations(userId)
+    conversationsList.value = convs
+  } catch (error) {
+    console.error('加载对话记录失败:', error)
+    conversationsList.value = []
+  } finally {
+    conversationsLoading.value = false
+  }
+}
+
+/**
+ * 查看历史对话
+ */
+const handleViewConversation = (sessionId: string) => {
+  console.log('查看对话:', sessionId)
+  // 切换到 practice 视图并加载该会话的消息
+  currentSessionId.value = sessionId
+  currentView.value = 'practice'
+  // 从后端加载该会话的对话历史
+  loadHistoricalMessages(sessionId)
+}
+
+/**
+ * 加载指定会话的对话历史
+ */
+const loadHistoricalMessages = async (sessionId: string) => {
+  try {
+    const messageList = await api.getConversationHistory(sessionId)
+    // 转换为 DialectMessage 格式
+    const historicalMessages: DialectMessage[] = messageList.map(msg => ({
+      id: msg.id,
+      role: msg.role as 'ai' | 'user',
+      text: msg.text,
+      translation: msg.translation,
+      timestamp: msg.timestamp,
+      showTranslation: subtitlesOn.value
+    }))
+    messages.value = historicalMessages
+
+    // 更新场景信息
+    if (currentSessionId.value) {
+      const conv = conversationsList.value.find(c => c.sessionId === currentSessionId.value)
+      if (conv) {
+        const sc = SCENARIOS.find(s => s.id === conv.scenarioId)
+        if (sc) {
+          currentScenario.value = sc
+        }
+      }
+    }
+  } catch (error) {
+    console.error('加载对话历史失败:', error)
+  }
+}
+
+/**
+ * 删除对话记录
+ */
+const handleDeleteConversation = async (sessionId: string) => {
+  if (!confirm('确定要删除这条对话记录吗？此操作不可撤销。')) {
+    return
+  }
+  try {
+    await api.deleteConversationRecords(sessionId)
+    // 从列表中移除
+    conversationsList.value = conversationsList.value.filter(c => c.sessionId !== sessionId)
+  } catch (error) {
+    console.error('删除对话记录失败:', error)
+    alert('删除失败，请重试')
+  }
+}
+
+/**
+ * 新建对话 - 回到场景选择页
+ */
+const handleCreateNewConversation = () => {
+  currentSessionId.value = null
+  currentView.value = 'scenarios'
+}
+
+/**
+ * 结束/完成对话
+ */
+const handleEndConversation = async () => {
+  if (!currentSessionId.value) {
+    return
+  }
+  
+  if (!confirm('确定要结束当前对话吗？这将生成对话总结并保存到历史记录。')) {
+    return
+  }
+  
+  try {
+    await api.endConversation(currentSessionId.value)
+    await loadConversations()
+    // 跳转到总结页面
+    currentView.value = 'summary'
+  } catch (error) {
+    console.error('结束对话失败:', error)
+    alert('结束对话失败，请重试')
+  }
+}
 
 const resetConversationForScenario = (sc: Scenario) => {
   window.speechSynthesis?.cancel()
@@ -840,48 +955,54 @@ const handleSelectScenario = async (sc: Scenario) => {
   }
 }
 
-const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary' | 'settings') => {
-  window.speechSynthesis?.cancel()
-  isPlayingAudio.value = false
-  activeVoiceMessageId.value = null
+const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary' | 'settings' | 'history') => {
+    window.speechSynthesis?.cancel()
+    isPlayingAudio.value = false
+    activeVoiceMessageId.value = null
 
-  // 切换到练习视图
-  if (view === 'practice') {
-    // 连接语音大模型
-    if (shouldUseVoiceAI.value) {
-      await connectVoiceAI()
-    }
+    // 先切换视图
+    currentView.value = view
 
-    // 创建后端会话
-    if (USE_API_MODE.value) {
-      try {
-        const conversation = await api.createConversation(currentScenario.value.id)
-        currentSessionId.value = conversation.sessionId
-        console.log('创建会话成功:', conversation.sessionId)
-      } catch (error) {
-        console.error('创建会话失败:', error)
+    // 切换到练习视图
+    if (view === 'practice') {
+      // 连接语音大模型
+      if (shouldUseVoiceAI.value) {
+        await connectVoiceAI()
       }
+
+      // 创建后端会话
+      if (USE_API_MODE.value) {
+        try {
+          const conversation = await api.createConversation(currentScenario.value.id)
+          currentSessionId.value = conversation.sessionId
+          console.log('创建会话成功:', conversation.sessionId)
+        } catch (error) {
+          console.error('创建会话失败:', error)
+        }
+      }
+      
+      // 创建完会话后刷新列表
+      await loadConversations()
+    } else if (view === 'history') {
+      // 切换到历史记录视图时也加载列表
+      await loadConversations()
     }
-  }
 
-  // 离开练习视图
-  if (currentView.value === 'practice' && view !== 'practice') {
-    // 断开语音大模型
-    disconnectVoiceAI()
+    // 离开练习视图
+    if (view !== 'practice' && currentSessionId.value) {
+      // 断开语音大模型
+      disconnectVoiceAI()
 
-    // 结束后端会话
-    if (currentSessionId.value) {
+      // 结束后端会话
       try {
         await api.endConversation(currentSessionId.value)
         console.log('会话已结束')
+        await loadConversations() // 结束后也刷新列表
       } catch (error) {
         console.error('结束会话失败:', error)
       }
       currentSessionId.value = null
     }
-  }
-
-  currentView.value = view
 }
 
 // ==================== 真实语音大模型集成 ====================
@@ -1140,79 +1261,111 @@ onUnmounted(() => {
         @view-change="handleViewChange"
       />
 
-      <main class="flex-1 w-full flex flex-col relative h-[calc(100vh-4rem)]">
+      <main class="flex-1 w-full flex flex-col relative pt-16">
+
         <ScenarioSelection
           v-if="currentView === 'scenarios'"
           :scenarios="SCENARIOS"
           @select-scenario="handleSelectScenario"
           @view-change="handleViewChange"
-          @open-history="ratingOpen = true"
+          @open-history="handleViewChange('history')"
+        />
+
+        <ConversationHistory
+          v-else-if="currentView === 'history'"
+          :conversations="conversationsList"
+          :loading="conversationsLoading"
+          @view-conversation="handleViewConversation"
+          @delete-conversation="handleDeleteConversation"
+          @close="handleViewChange('scenarios')"
+          @create-new="handleCreateNewConversation"
         />
 
         <template v-else-if="currentView === 'practice'">
-        <div class="flex-1 flex flex-col relative h-full">
-          <div class="px-5 md:px-12 pt-4 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-1 bg-[#b4ffed] text-[#006053] font-mono text-[10px] font-black uppercase rounded-md tracking-wider">
-                {{ currentScenario.tag }}
-              </span>
-              <span class="text-xs font-semibold text-slate-500 font-sans">
-                当前练习: <span class="text-slate-800 font-bold">{{ currentScenario.title }}</span> (进度: {{ currentQuestionIndex }}/{{ currentScenario.questions.length }})
-              </span>
+        <div class="flex-1 flex relative overflow-hidden" style="height: calc(100vh - 4rem)">
+          <!-- 左侧历史对话边栏 -->
+          <ConversationSidebar
+            :conversations="conversationsList"
+            :loading="conversationsLoading"
+            :current-session-id="currentSessionId"
+            :scenarios="SCENARIOS"
+            @select-conversation="handleViewConversation"
+            @delete-conversation="handleDeleteConversation"
+            @create-new-conversation="handleCreateNewConversation"
+          />
+
+          <!-- 右侧主内容区域 -->
+          <div class="flex-1 flex flex-col min-w-0">
+            <!-- 固定顶部状态栏 -->
+            <div class="flex-none px-5 md:px-12 pt-4 pb-2 flex items-center justify-between sticky top-0 bg-gradient-to-b from-[#f7fbfa] to-transparent z-10">
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-1 bg-[#b4ffed] text-[#006053] font-mono text-[10px] font-black uppercase rounded-md tracking-wider">
+                  {{ currentScenario.tag }}
+                </span>
+                <span class="text-xs font-semibold text-slate-500 font-sans">
+                  当前练习: <span class="text-slate-800 font-bold">{{ currentScenario.title }}</span> (进度: {{ currentQuestionIndex }}/{{ currentScenario.questions.length }})
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <div v-if="voiceConnecting" class="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                  <span class="text-[10px] font-bold text-amber-700">语音AI连接中...</span>
+                </div>
+                <div v-else-if="voiceConnected && voiceAiReady" class="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span class="text-[10px] font-bold text-emerald-700">语音AI已连接</span>
+                </div>
+                <button
+                  @click="handleResetScenario"
+                  class="text-[10px] font-bold text-[#006053] hover:text-[#0f7b6b] flex items-center gap-1 bg-white border border-[#bdc9c5]/35 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-sm"
+                >
+                  重置该场景
+                </button>
+                <button
+                  @click="handleEndConversation"
+                  class="text-[10px] font-bold text-white hover:opacity-90 flex items-center gap-1 bg-[#006053] px-3 py-1 rounded-lg transition-colors cursor-pointer shadow-sm"
+                >
+                  完成对话
+                </button>
+              </div>
             </div>
 
-            <div class="flex items-center gap-2">
-              <div v-if="voiceConnecting" class="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg">
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                <span class="text-[10px] font-bold text-amber-700">语音AI连接中...</span>
-              </div>
-              <div v-else-if="voiceConnected && voiceAiReady" class="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span class="text-[10px] font-bold text-emerald-700">语音AI已连接</span>
-              </div>
-              <button
-                @click="handleResetScenario"
-                class="text-[10px] font-bold text-[#006053] hover:text-[#0f7b6b] flex items-center gap-1 bg-white border border-[#bdc9c5]/35 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-sm"
-              >
-                重置该场景
-              </button>
-              <button
-                @click="currentView = 'summary'"
-                class="text-[10px] font-bold text-slate-700 hover:text-slate-900 flex items-center gap-1 bg-white border border-slate-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-sm"
-              >
-                预览总结分析
-              </button>
+            <!-- 可滚动的聊天区域 -->
+            <div class="flex-1 min-h-0 overflow-y-auto">
+              <ChatArea
+                :messages="messages"
+                :is-playing-audio="isPlayingAudio"
+                :active-voice-message-id="activeVoiceMessageId"
+                :current-scenario="currentScenario"
+                :is-thinking="isThinking"
+                @speak="speakAudio"
+                @toggle-translation="handleToggleTranslation"
+              />
+            </div>
+
+            <!-- 固定底部控制面板 -->
+            <div class="flex-none sticky bottom-0 z-20">
+              <ControlPanel
+                :is-recording="isRecording"
+                :is-typing-mode="isTypingMode"
+                :subtitles-on="subtitlesOn"
+                :has-rating="!!currentRating"
+                :current-transcript="currentTranscript"
+                :audio-devices="audioDevices"
+                :selected-audio-device-id="selectedAudioDeviceId"
+                @start-recording="startRecording"
+                @stop-recording="handleStopRecording"
+                @toggle-typing-mode="isTypingMode = !isTypingMode"
+                @toggle-subtitles="handleGlobalToggleSubtitles"
+                @send-text="handleUserAnswerSubmit"
+                @open-rating-modal="ratingOpen = true"
+                @change-audio-device="handleChangeAudioDevice"
+              />
             </div>
           </div>
-
-          <ChatArea
-            :messages="messages"
-            :is-playing-audio="isPlayingAudio"
-            :active-voice-message-id="activeVoiceMessageId"
-            :current-scenario="currentScenario"
-            :is-thinking="isThinking"
-            @speak="speakAudio"
-            @toggle-translation="handleToggleTranslation"
-          />
-
-          <ControlPanel
-            :is-recording="isRecording"
-            :is-typing-mode="isTypingMode"
-            :subtitles-on="subtitlesOn"
-            :has-rating="!!currentRating"
-            :current-transcript="currentTranscript"
-            :audio-devices="audioDevices"
-            :selected-audio-device-id="selectedAudioDeviceId"
-            @start-recording="startRecording"
-            @stop-recording="handleStopRecording"
-            @toggle-typing-mode="isTypingMode = !isTypingMode"
-            @toggle-subtitles="handleGlobalToggleSubtitles"
-            @send-text="handleUserAnswerSubmit"
-            @open-rating-modal="ratingOpen = true"
-            @change-audio-device="handleChangeAudioDevice"
-          />
         </div>
-      </template>
+        </template>
 
       <PracticeSummary
         v-else-if="currentView === 'summary'"

@@ -38,7 +38,7 @@ public class Message {
     @Column(name = "pronunciation_score")
     private Integer pronunciationScore;
 
-    @Column(name = "grammar_feedback", columnDefinition = "JSONB")
+    @Column(name = "grammar_feedback", columnDefinition = "TEXT")
     private String grammarFeedback;
 
     @Column(nullable = false)
