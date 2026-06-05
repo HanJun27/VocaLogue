@@ -1,0 +1,146 @@
+<script setup lang="ts">
+import { ref, watch, nextTick } from 'vue'
+import { Mic, Keyboard, Send, Subtitles, Award } from 'lucide-vue-next'
+
+interface Props {
+  isRecording: boolean
+  isTypingMode: boolean
+  subtitlesOn: boolean
+  hasRating: boolean
+  currentTranscript: string
+}
+
+const props = defineProps<Props>()
+const emit = defineEmits<{
+  startRecording: []
+  stopRecording: []
+  toggleTypingMode: []
+  toggleSubtitles: []
+  sendText: [text: string]
+  openRatingModal: []
+}>()
+
+const typedText = ref('')
+const inputRef = ref<HTMLInputElement | null>(null)
+
+const handleSubmit = (e: SubmitEvent) => {
+  e.preventDefault()
+  if (!typedText.value.trim()) return
+  emit('sendText', typedText.value.trim())
+  typedText.value = ''
+}
+
+watch(
+  () => props.isTypingMode,
+  async (val) => {
+    if (val) {
+      await nextTick()
+      inputRef.value?.focus()
+    }
+  }
+)
+</script>
+
+<template>
+  <div class="fixed bottom-0 left-0 w-full glass-panel border-t border-[#bdc9c5]/35 pt-4 pb-7 px-4 rounded-t-3xl z-40 shadow-[0_-8px_30px_rgba(15,123,107,0.06)]">
+    <div class="max-w-[850px] mx-auto flex flex-col gap-3">
+      <div v-if="isRecording" class="w-full text-center px-4 py-2 bg-emerald-50/70 border border-emerald-100/50 rounded-lg text-emerald-950 text-xs font-medium font-sans max-w-lg mx-auto">
+        <div class="flex items-center justify-center gap-1.5 mb-1 text-[10px] text-emerald-700 tracking-wider font-bold uppercase animate-pulse">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+          <span>正在聆听并转写语音...</span>
+        </div>
+        <p class="italic font-mono min-h-[16px] text-slate-700 select-none">
+          {{ currentTranscript || '“请开始用英文回答面试提问...”' }}
+        </p>
+      </div>
+
+      <div class="flex items-center justify-between relative mt-1.5">
+        <button
+          @click="emit('openRatingModal')"
+          :class="[
+            'w-14 h-14 flex flex-col items-center justify-center gap-0.5 transition-colors group cursor-pointer',
+            hasRating ? 'text-[#006053]' : 'text-slate-400 hover:text-slate-600'
+          ]"
+          title="查看最新一轮发音能力评测结果"
+        >
+          <div :class="[
+            'w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-sm',
+            hasRating ? 'bg-[#98f3df] text-[#00201b]' : 'bg-slate-100 group-hover:bg-slate-200 text-slate-500'
+          ]">
+            <Award class="w-4 h-4 fill-current text-inherit" />
+          </div>
+          <span class="font-sans text-[9px] font-bold tracking-tight">发音评测</span>
+        </button>
+
+        <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-4">
+          <template v-if="!isTypingMode">
+            <div class="relative flex items-center justify-center">
+              <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
+              <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
+
+              <button
+                @click="isRecording ? emit('stopRecording') : emit('startRecording')"
+                :class="[
+                  'relative w-16 h-16 rounded-full shadow-[0_6px_20px_rgba(0,96,83,0.25)] flex items-center justify-center active:scale-95 transition-all z-10 cursor-pointer',
+                  isRecording ? 'bg-red-500 text-white' : 'bg-[#006053] text-white hover:scale-105'
+                ]"
+                :title="isRecording ? '结束录音并提交' : '开始录音答题'"
+              >
+                <div v-if="isRecording" class="w-4.5 h-4.5 bg-white rounded-sm animate-pulse" />
+                <Mic v-else class="w-6 h-6 stroke-[2.5px]" />
+              </button>
+            </div>
+          </template>
+
+          <form v-else @submit="handleSubmit" class="flex items-center gap-1.5 px-3 py-1 bg-[#eff4ff] border border-slate-200 rounded-full shadow-inner w-[340px]">
+            <input
+              ref="inputRef"
+              v-model="typedText"
+              type="text"
+              placeholder="输入你的面试英语回答..."
+              class="flex-1 font-sans text-xs bg-transparent border-none outline-none text-slate-800 py-1.5 px-1 placeholder-slate-400"
+            />
+            <button
+              type="submit"
+              :disabled="!typedText.trim()"
+              class="p-1.5 bg-[#006053] hover:bg-[#0f7b6b] text-white rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send class="w-3 h-3" />
+            </button>
+          </form>
+
+          <button
+            @click="emit('toggleTypingMode')"
+            :class="[
+              'w-7 h-7 flex items-center justify-center rounded-full border border-slate-200 hover:bg-slate-100 transition-colors shadow-sm cursor-pointer',
+              isTypingMode ? 'bg-[#98f3df] text-[#00201b]' : 'bg-white text-slate-500 hover:text-slate-800'
+            ]"
+            :title="isTypingMode ? '回到语音交互' : '切换为键盘输入打字模式'"
+          >
+            <Mic v-if="isTypingMode" class="w-3.5 h-3.5" />
+            <Keyboard v-else class="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <button
+          @click="emit('toggleSubtitles')"
+          :class="[
+            'w-14 h-14 flex flex-col items-center justify-center gap-0.5 transition-colors group cursor-pointer',
+            subtitlesOn ? 'text-[#006053]' : 'text-slate-400 hover:text-slate-600'
+          ]"
+          :title="subtitlesOn ? '关闭字幕翻译' : '打开字幕翻译'"
+        >
+          <div :class="[
+            'w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-sm',
+            subtitlesOn ? 'bg-[#98f3df] text-[#00201b]' : 'bg-slate-100 group-hover:bg-slate-200 text-slate-500'
+          ]">
+            <Subtitles :class="['w-4 h-4', subtitlesOn ? 'stroke-[2.5px]' : 'stroke-inherit']" />
+          </div>
+          <span class="font-sans text-[9px] font-bold tracking-tight">
+            字幕({{ subtitlesOn ? '开' : '关' }})
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

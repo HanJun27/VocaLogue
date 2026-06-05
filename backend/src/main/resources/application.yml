@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: lingoai-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/lingoai
+    username: postgres
+    password: password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 6000ms
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+logging:
+  level:
+    com.lingoai: DEBUG
+    org.hibernate.SQL: DEBUG
+
+# 发音评测服务配置（示例）
+pronunciation:
+  api-key: ${PRONUNCIATION_API_KEY:test-key}
+  api-url: ${PRONUNCIATION_API_URL:http://localhost:8081}
