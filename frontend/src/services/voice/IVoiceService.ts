@@ -60,11 +60,14 @@ export interface VoiceServiceConfig {
   // API 配置
   apiKey: string
   appId?: string
+  secretKey?: string  // 豆包 Secret Key（如 Access Token 无效时使用）
   modelProvider: 'openai' | 'doubao' | 'custom'
+  backendUrl: string  // 后端地址，用于 WebSocket 代理连接
   
   // 音频配置
   sampleRate: number
   audioChunkSize: number
+  audioInputDeviceId?: string  // 指定麦克风设备 ID，空字符串表示默认设备
   
   // VAD 配置
   vadEnabled: boolean

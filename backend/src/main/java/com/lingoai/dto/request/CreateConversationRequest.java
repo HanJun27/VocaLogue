@@ -20,4 +20,9 @@ public class CreateConversationRequest {
 
     private String userId;
 
+    // AI 口语陪练模式：启用 ASR→LLM→TTS 管线
+    private Boolean useAiPractice;
+
+    // 管线配置（可选，默认使用用户设置）
+    private PipelineConfigRequest pipelineConfig;
 }

@@ -41,7 +41,7 @@ export class VoiceService {
   private isRecording = false
   private isConnected = false
   private silenceTimer: number | null = null
-  private audioChunks: Uint8Array[] = []
+  // private audioChunks: Uint8Array[] = []
   private sampleRate = 16000
   private events: Partial<VoiceServiceEvents> = {}
   private browserCapabilities: BrowserCapabilities | null = null
@@ -99,7 +99,7 @@ export class VoiceService {
       if (config.modelProvider === 'doubao') {
         await this.connectToDoubao(scenario, config.apiKey)
       } else {
-        await this.connectToOpenAI(scenario, config.apiKey)
+        await this.connectToOpenAI(scenario)
       }
       this.isConnected = true
       this.events.onConnected?.()
@@ -118,7 +118,7 @@ export class VoiceService {
     this.setupWebSocketHandlers(scenario)
   }
 
-  private async connectToOpenAI(scenario: Scenario, apiKey: string): Promise<void> {
+  private async connectToOpenAI(scenario: Scenario): Promise<void> {
     // OpenAI Realtime API 连接
     const url = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01'
     
@@ -161,7 +161,7 @@ export class VoiceService {
   private sendInitialConfig(scenario: Scenario): void {
     const config = configService.getConfig()
     
-    if (config.modelProvider === 'gpt-4o' || config.modelProvider === 'openai') {
+    if (config.modelProvider === 'gpt-4o') {
       // OpenAI Realtime API 配置
       const sessionConfig = {
         type: 'session.update',
@@ -490,45 +490,45 @@ export class VoiceService {
   /**
    * 使用 ScriptProcessor 录制音频（备用方案，已弃用但仍可用）
    */
-  private startScriptProcessorRecording(): void {
-    if (!this.mediaStream) return
+  // private startScriptProcessorRecording(): void {
+  //   if (!this.mediaStream) return
 
-    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
-      sampleRate: this.sampleRate
-    })
+  //   this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+  //     sampleRate: this.sampleRate
+  //   })
 
-    const source = this.audioContext.createMediaStreamSource(this.mediaStream)
-    this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1)
+  //   const source = this.audioContext.createMediaStreamSource(this.mediaStream)
+  //   this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1)
     
-    this.scriptProcessor.onaudioprocess = (e) => {
-      if (!this.isRecording) return
+  //   this.scriptProcessor.onaudioprocess = (e) => {
+  //     if (!this.isRecording) return
 
-      const inputData = e.inputBuffer.getChannelData(0)
-      const pcmData = this.floatTo16BitPCM(inputData)
+      // const inputData = e.inputBuffer.getChannelData(0)
+      // const pcmData = this.floatTo16BitPCM(inputData)
       
       // 发送音频数据
-      this.sendAudioData(pcmData)
+      // this.sendAudioData(pcmData)
       
       // 静音检测（可选）
-      this.detectSilence(inputData)
-    }
+      // this.detectSilence(inputData)
+      // }
 
-    source.connect(this.scriptProcessor)
-    this.scriptProcessor.connect(this.audioContext.destination)
-  }
+      // source.connect(this.scriptProcessor)
+      // this.scriptProcessor.connect(this.audioContext.destination)
+      // }
 
-  private floatTo16BitPCM(input: Float32Array): Uint8Array {
-    const output = new Int16Array(input.length)
-    for (let i = 0; i < input.length; i++) {
-      const s = Math.max(-1, Math.min(1, input[i]))
-      output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
-    }
-    return new Uint8Array(output.buffer)
-  }
+  // private floatTo16BitPCM(input: Float32Array): Uint8Array {
+  //   const output = new Int16Array(input.length)
+  //   for (let i = 0; i < input.length; i++) {
+  //     const s = Math.max(-1, Math.min(1, input[i]))
+  //     output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
+  //   }
+  //   return new Uint8Array(output.buffer)
+  // }
 
   private sendAudioStart(): void {
     const config = configService.getConfig()
-    if (config.modelProvider === 'gpt-4o' || config.modelProvider === 'openai') {
+    if (config.modelProvider === 'gpt-4o') {
       this.ws?.send(JSON.stringify({
         type: 'input_audio_buffer.clear'
       }))
@@ -539,7 +539,7 @@ export class VoiceService {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
     const config = configService.getConfig()
-    if (config.modelProvider === 'gpt-4o' || config.modelProvider === 'openai') {
+    if (config.modelProvider === 'gpt-4o') {
       // OpenAI 需要 base64 编码
       const base64 = btoa(String.fromCharCode.apply(null, Array.from(data)))
       this.ws.send(JSON.stringify({
@@ -552,32 +552,32 @@ export class VoiceService {
     }
   }
 
-  private detectSilence(inputData: Float32Array): void {
-    const config = configService.getConfig()
-    if (!config.vadEnabled) return
+  // private detectSilence(inputData: Float32Array): void {
+  //   const config = configService.getConfig()
+  //   if (!config.vadEnabled) return
 
-    // 计算音量
-    let sum = 0
-    for (let i = 0; i < inputData.length; i++) {
-      sum += inputData[i] * inputData[i]
-    }
-    const rms = Math.sqrt(sum / inputData.length)
+  //   // 计算音量
+  //   let sum = 0
+  //   for (let i = 0; i < inputData.length; i++) {
+  //     sum += inputData[i] * inputData[i]
+  //   }
+  //   const rms = Math.sqrt(sum / inputData.length)
     
-    // 如果音量低于阈值，开始静音计时
-    if (rms < config.vadThreshold) {
-      if (!this.silenceTimer) {
-        this.silenceTimer = window.setTimeout(() => {
-          this.stopRecording()
-        }, config.vadSilenceDuration)
-      }
-    } else {
-      // 有声音，重置静音定时器
-      if (this.silenceTimer) {
-        clearTimeout(this.silenceTimer)
-        this.silenceTimer = null
-      }
-    }
-  }
+  //   // 如果音量低于阈值，开始静音计时
+  //   if (rms < config.vadThreshold) {
+  //     if (!this.silenceTimer) {
+  //       this.silenceTimer = window.setTimeout(() => {
+  //         this.stopRecording()
+  //       }, config.vadSilenceDuration)
+  //     }
+  //   } else {
+  //     // 有声音，重置静音定时器
+  //     if (this.silenceTimer) {
+  //       clearTimeout(this.silenceTimer)
+  //       this.silenceTimer = null
+  //     }
+  //   }
+  // }
 
   /**
    * 停止录音
@@ -623,7 +623,7 @@ export class VoiceService {
 
   private sendAudioEnd(): void {
     const config = configService.getConfig()
-    if (config.modelProvider === 'gpt-4o' || config.modelProvider === 'openai') {
+    if (config.modelProvider === 'gpt-4o') {
       this.ws?.send(JSON.stringify({
         type: 'input_audio_buffer.commit'
       }))
@@ -645,7 +645,7 @@ export class VoiceService {
     
     // 发送打断信号
     const config = configService.getConfig()
-    if (config.modelProvider === 'gpt-4o' || config.modelProvider === 'openai') {
+    if (config.modelProvider === 'gpt-4o') {
       this.ws?.send(JSON.stringify({
         type: 'response.cancel'
       }))
@@ -772,7 +772,7 @@ export class VoiceService {
     const startTime = Date.now()
 
     try {
-      if (config.modelProvider === 'gpt-4o' || config.modelProvider === 'openai') {
+      if (config.modelProvider === 'gpt-4o') {
         return await this.testOpenAIConnection(config.apiKey, startTime)
       } else {
         return await this.testDoubaoConnection(config.apiKey, startTime)

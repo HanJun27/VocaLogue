@@ -3,50 +3,45 @@
  * 实现豆包端到端实时语音大模型API的二进制协议
  */
 
-import { 
-  IVoiceService, 
+import type { IVoiceService } from '../IVoiceService'
+import type { 
   VoiceServiceConfig, 
   TranscriptEvent, 
   ConnectionTestResult,
   VoiceServiceEventHandlers 
-} from './IVoiceService'
+} from '../IVoiceService'
 import type { Scenario } from '@/types'
 
 /**
  * 豆包事件ID定义
  */
-enum DoubaoEventType {
-  // 连接类事件
-  StartConnection = 1,
-  FinishConnection = 2,
-  
-  // 会话类事件
-  StartSession = 100,
-  FinishSession = 101,
-  
-  // 对话类事件
-  PushAudio = 200,
-  FinishSpeaking = 201,
-  ClientCancel = 202,
-  
-  // 服务器事件
-  SessionStarted = 1000,
-  SessionFinished = 1001,
-  AudioGenerated = 2000,
-  TranscriptGenerated = 2001,
-  Error = 9999
-}
+const DoubaoEventType = {
+  StartConnection: 1,
+  FinishConnection: 2,
+  StartSession: 100,
+  FinishSession: 101,
+  PushAudio: 200,
+  FinishSpeaking: 201,
+  ClientCancel: 202,
+  SessionStarted: 1000,
+  SessionFinished: 1001,
+  AudioGenerated: 2000,
+  TranscriptGenerated: 2001,
+  Error: 9999
+} as const
 
 /**
  * 豆包二进制协议消息类型
  */
-enum DoubaoMessageType {
-  FullClientRequest = 0b0001,      // 客户端发送文本事件
-  FullServerResponse = 0b1001,     // 服务器返回文本事件
-  AudioOnlyRequest = 0b0010,       // 客户端发送音频数据
-  AudioOnlyResponse = 0b1011,      // 服务器返回音频数据
-  ErrorInformation = 0b1111        // 服务器返回错误事件
-}
+const DoubaoMessageType = {
+  FullClientRequest: 0b0001,
+  FullServerResponse: 0b1001,
+  AudioOnlyRequest: 0b0010,
+  AudioOnlyResponse: 0b1011,
+  ErrorInformation: 0b1111
+} as const
+
+type DoubaoMessageTypeValue = typeof DoubaoMessageType[keyof typeof DoubaoMessageType]
 
 /**
  * 豆包二进制协议辅助类
@@ -56,7 +51,7 @@ class DoubaoBinaryProtocol {
    * 构建二进制消息
    */
   static buildMessage(
-    messageType: DoubaoMessageType,
+    messageType: DoubaoMessageTypeValue,
     eventId: number,
     payload: string | Uint8Array,
     sequence?: number,
@@ -152,7 +147,7 @@ class DoubaoBinaryProtocol {
    * 解析二进制消息
    */
   static parseMessage(buffer: Uint8Array): {
-    messageType: DoubaoMessageType
+    messageType: DoubaoMessageTypeValue
     eventId?: number
     sequence?: number
     sessionId?: string
@@ -163,17 +158,20 @@ class DoubaoBinaryProtocol {
     let offset = 0
     
     // === Header (4 bytes) ===
-    const byte0 = buffer[offset++]
-    const protocolVersion = (byte0 >> 4) & 0x0F
-    const headerSize = byte0 & 0x0F
+    // const byte0 = buffer[offset++]
+    offset++ // Skip byte0 (protocol version + header size)
+    // const protocolVersion = (byte0 >> 4) & 0x0F
+    // const headerSize = byte0 & 0x0F
     
     const byte1 = buffer[offset++]
-    const messageType = (byte1 >> 4) & 0x0F as DoubaoMessageType
+    const messageTypeValue = (byte1 >> 4) & 0x0F
+    const messageType = messageTypeValue as DoubaoMessageTypeValue
     const flags = byte1 & 0x0F
     
-    const byte2 = buffer[offset++]
-    const serialization = (byte2 >> 4) & 0x0F
-    const compression = byte2 & 0x0F
+    // const byte2 = buffer[offset++]
+    offset++ // Skip byte2 (serialization/compression)
+    // const serialization = (byte2 >> 4) & 0x0F
+    // const compression = byte2 & 0x0F
     
     offset++ // Skip reserved byte
     
@@ -231,7 +229,7 @@ export class DoubaoVoiceServiceAdapter implements IVoiceService {
   private ws: WebSocket | null = null
   private mediaStream: MediaStream | null = null
   private mediaRecorder: MediaRecorder | null = null
-  private audioContext: AudioContext | null = null
+  // private audioContext: AudioContext | null = null
   private playbackContext: AudioContext | null = null
   private playbackQueue: AudioBuffer[] = []
   private isPlayingAudio = false
@@ -246,9 +244,10 @@ export class DoubaoVoiceServiceAdapter implements IVoiceService {
   private handlers: Partial<VoiceServiceEventHandlers> = {}
   
   // 豆包特定配置
-  private readonly DOUBAO_WS_URL = 'wss://openspeech.bytedance.com/api/v3/realtime/dialogue'
-  private readonly DOUBAO_RESOURCE_ID = 'volc.speech.dialog'
-  private readonly DOUBAO_APP_KEY = 'PlgvMymc7f3tQnJ6'
+  // 使用后端代理地址，后端会处理认证和转发
+  private readonly DOUBAO_WS_URL = '/api/voice/doubao'
+  // private readonly DOUBAO_RESOURCE_ID = 'volc.speech.dialog'
+  // private readonly DOUBAO_APP_KEY = 'PlgvMymc7f3tQnJ6'
   
   constructor(config: VoiceServiceConfig) {
     this.config = config
@@ -318,13 +317,17 @@ export class DoubaoVoiceServiceAdapter implements IVoiceService {
     
     try {
       // 获取麦克风权限
+      const audioConstraints: MediaTrackConstraints = {
+        sampleRate: this.config.sampleRate,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true
+      }
+      if (this.config.audioInputDeviceId) {
+        audioConstraints.deviceId = { exact: this.config.audioInputDeviceId }
+      }
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: this.config.sampleRate,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true
-        }
+        audio: audioConstraints
       })
       
       // 使用 MediaRecorder 录制
@@ -398,37 +401,115 @@ export class DoubaoVoiceServiceAdapter implements IVoiceService {
     this.isPlayingAudio = false
   }
   
+  private getBackendWsUrl(): string {
+    const backendUrl = this.config.backendUrl || 'http://localhost:8080'
+    return backendUrl.replace('http', 'ws') + this.DOUBAO_WS_URL
+  }
+
   async testConnection(): Promise<ConnectionTestResult> {
     const startTime = Date.now()
     
+    console.log('[DoubaoAdapter] 开始测试连接...')
+    console.log('[DoubaoAdapter] API Key:', this.config.apiKey ? `${this.config.apiKey.substring(0, 10)}...` : '未设置')
+    console.log('[DoubaoAdapter] App ID:', this.config.appId || '未设置')
+    
     try {
-      // 测试豆包健康检查接口
-      const response = await fetch('https://openspeech.bytedance.com/api/v1/health', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`
+      // 使用WebSocket连接到后端代理进行测试
+      console.log('[DoubaoAdapter] 尝试通过后端代理建立WebSocket连接...')
+      const wsUrl = this.getBackendWsUrl()
+      console.log('[DoubaoAdapter] WebSocket URL:', wsUrl)
+      
+      const wsPromise = new Promise<{ success: boolean; message: string; latency: number }>((resolve) => {
+        const testWs = new WebSocket(wsUrl)
+        const timeout = setTimeout(() => {
+          testWs.close()
+          resolve({
+            success: false,
+            message: 'WebSocket连接超时（10秒）',
+            latency: Date.now() - startTime
+          })
+        }, 10000)
+        
+        testWs.onopen = () => {
+          console.log('[DoubaoAdapter] WebSocket已连接到后端代理')
+          // 发送认证信息
+          const authMessage = JSON.stringify({
+            apiKey: this.config.apiKey,
+            appId: this.config.appId,
+            secretKey: this.config.secretKey || ''
+          })
+          testWs.send(authMessage)
+        }
+        
+        testWs.onmessage = (event) => {
+          clearTimeout(timeout)
+          if (typeof event.data === 'string') {
+            try {
+              const message = JSON.parse(event.data)
+              if (message.type === 'error') {
+                console.error('[DoubaoAdapter] 后端代理返回错误:', message.message)
+                testWs.close()
+                resolve({
+                  success: false,
+                  message: message.message,
+                  latency: Date.now() - startTime
+                })
+              } else if (message.type === 'success') {
+                console.log('[DoubaoAdapter] 后端代理返回成功:', message.message)
+                testWs.close()
+                resolve({
+                  success: true,
+                  message: `豆包 ${message.credentialType || ''} 连接正常`,
+                  latency: Date.now() - startTime
+                })
+              }
+            } catch (e) {
+              // 非JSON消息，可能是豆包返回的其他数据
+            }
+          } else {
+            // 收到二进制消息，说明连接成功
+            console.log('[DoubaoAdapter] 收到豆包响应，连接测试成功')
+            testWs.close()
+            resolve({
+              success: true,
+              message: '豆包 WebSocket 连接正常',
+              latency: Date.now() - startTime
+            })
+          }
+        }
+        
+        testWs.onerror = (error) => {
+          clearTimeout(timeout)
+          console.error('[DoubaoAdapter] WebSocket连接错误:', error)
+          resolve({
+            success: false,
+            message: `WebSocket连接失败: ${error instanceof Error ? error.message : '未知错误'}`,
+            latency: Date.now() - startTime
+          })
+        }
+        
+        testWs.onclose = (event) => {
+          clearTimeout(timeout)
+          if (event.code !== 1000) {
+            console.error('[DoubaoAdapter] WebSocket关闭:', event.code, event.reason)
+            if (!testWs || testWs.readyState === WebSocket.CLOSED) {
+              resolve({
+                success: false,
+                message: `WebSocket连接关闭: ${event.code} ${event.reason}`,
+                latency: Date.now() - startTime
+              })
+            }
+          }
         }
       })
       
-      const latency = Date.now() - startTime
+      return await wsPromise
       
-      if (response.ok) {
-        return {
-          success: true,
-          message: '豆包 API 连接正常',
-          latency
-        }
-      } else {
-        return {
-          success: false,
-          message: '豆包 API 连接失败',
-          latency
-        }
-      }
     } catch (error) {
+      console.error('[DoubaoAdapter] 测试连接异常:', error)
       return {
         success: false,
-        message: '网络连接失败',
+        message: `网络连接失败: ${error instanceof Error ? error.message : '未知错误'}`,
         latency: Date.now() - startTime
       }
     }
@@ -463,20 +544,47 @@ export class DoubaoVoiceServiceAdapter implements IVoiceService {
    */
   private async connectWebSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.DOUBAO_WS_URL)
+      // 使用后端代理地址
+      const wsUrl = this.getBackendWsUrl()
+      console.log('[DoubaoAdapter] WebSocket URL:', wsUrl)
       
-      // 设置请求头（需要在连接时通过其他方式传递）
-      // 注意：WebSocket API 不支持自定义 headers，豆包可能需要通过 query parameter 或其他方式
-      
+      this.ws = new WebSocket(wsUrl)
       this.ws.binaryType = 'arraybuffer'
       
       this.ws.onopen = () => {
-        console.log('[DoubaoAdapter] WebSocket 已连接')
+        console.log('[DoubaoAdapter] WebSocket 已连接到后端代理')
+        // 先发送认证信息给后端
+        const authMessage = JSON.stringify({
+          apiKey: this.config.apiKey,
+          appId: this.config.appId,
+          secretKey: this.config.secretKey || ''
+        })
+        console.log('[DoubaoAdapter] 发送认证信息到后端...')
+        if (this.ws) {
+          this.ws.send(authMessage)
+        }
         resolve()
       }
       
       this.ws.onmessage = (event) => {
-        this.handleMessage(event.data)
+        // 检查是否是文本消息（后端通知）
+        if (typeof event.data === 'string') {
+          try {
+            const message = JSON.parse(event.data)
+            if (message.type === 'error') {
+              console.error('[DoubaoAdapter] 后端代理错误:', message.message)
+              this.handlers.onError?.(new Error(message.message))
+            } else if (message.type === 'disconnect') {
+              console.warn('[DoubaoAdapter] 后端通知连接断开:', message.message)
+              this.handlers.onDisconnected?.(new Error(message.message))
+            }
+          } catch (e) {
+            // 不是JSON消息，忽略
+          }
+        } else {
+          // 二进制消息，是豆包返回的音频数据
+          this.handleMessage(event.data)
+        }
       }
       
       this.ws.onerror = (error) => {
@@ -486,10 +594,9 @@ export class DoubaoVoiceServiceAdapter implements IVoiceService {
       
       this.ws.onclose = (event) => {
         console.log('[DoubaoAdapter] WebSocket 已关闭:', event.code, event.reason)
-        this.isConnected = false
-        this.handlers.onDisconnected?.(
-          event.code !== 1000 ? new Error(`连接关闭: ${event.reason}`) : undefined
-        )
+        if (event.code !== 1000 && event.code !== 1005) {
+          this.handlers.onError?.(new Error(`WebSocket连接关闭: ${event.code} ${event.reason}`))
+        }
       }
     })
   }

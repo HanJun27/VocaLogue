@@ -29,7 +29,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar flex flex-col gap-6 max-w-[1000px] mx-auto w-full pt-6 pb-28">
+  <div class="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar flex flex-col gap-6 max-w-[1000px] mx-auto w-full pt-6 pb-32">
     <div class="self-center glass-panel rounded-xl px-6 py-3 shadow-[0_2px_8px_rgba(0,107,92,0.02)] border border-[#bdc9c5]/30 max-w-lg text-center">
       <p class="font-sans text-xs text-slate-500 leading-relaxed font-medium">
         你正在进行 <span class="text-[#006053] font-bold">{{ currentScenario.title }}</span> 的模拟练习。AI 面试官将开始提问，请用英语回答。若不方便发音，可随时切换到键盘输入。

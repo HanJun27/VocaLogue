@@ -10,6 +10,7 @@ export const SCENARIOS: Scenario[] = [
     description: '技术/行为面试练习。模拟真实 HR 或技术主管的提问风格，锻炼抗压表达。',
     welcomeMessage: 'Hello! Welcome to the interview. To start off, could you please tell me a little bit about yourself and your background in software development?',
     welcomeTranslation: '你好！欢迎参加面试。首先，能否简单介绍一下你自己以及你在软件开发方面的背景？',
+    systemPrompt: '你是一位技术面试官，负责评估前端开发候选人。请用专业但友好的方式提问，评估候选人的技术能力和沟通技巧。',
     questions: [
       {
         text: 'That is wonderful. Since you mentioned React, can you explain the critical differences between Server Components and Client Components in React 19, and when to use each?',
@@ -75,6 +76,7 @@ export const SCENARIOS: Scenario[] = [
     description: '生活口语基础。从预定位置、询问菜单到结账，掌握日常出行的必备句型。',
     welcomeMessage: 'Hello! Welcome to Lingo Bistro. I will be your server today. Would you like to start with some drinks or check our specials?',
     welcomeTranslation: '您好！欢迎光临 Lingo 小酒馆。我是您今天的服务员。您想先喝点饮品，还是看看我们的今日特供？',
+    systemPrompt: '你是一位餐厅服务员，请用友好专业的态度为顾客提供点餐服务。',
     questions: [
       {
         text: 'Excellent choice. Our chef recommends the pan-seared ribeye steak or the creamy garlic seafood pasta today. What would you like to have for your main course?',
@@ -109,6 +111,7 @@ export const SCENARIOS: Scenario[] = [
     description: '商务听力与表达。练习在多人会议中陈述观点、提问及应对复杂讨论的技巧。',
     welcomeMessage: "Welcome everyone to our Q2 international business review. Let's discuss our globalization metrics. How did our new regional campaign perform last quarter?",
     welcomeTranslation: '欢迎各位来到我们第二季度的国际业务回顾会议。我们来商讨一下全球化指标。上个季度我们新的区域推广活动表现如何？',
+    systemPrompt: '你是一位商务会议主持人，请用专业商务英语引导会议讨论。',
     questions: [
       {
         text: 'That sounds promising. However, our user engagement rate in some markets saw a slight decline. What adjustments should we introduce in the upcoming sprint to optimize this?',

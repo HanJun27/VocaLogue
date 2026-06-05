@@ -3,7 +3,8 @@
  * 对外提供统一的语音服务接口，内部使用适配器模式支持多种模型
  */
 
-import { IVoiceService, VoiceServiceConfig, VoiceServiceEventHandlers } from './IVoiceService'
+import type { IVoiceService } from './IVoiceService'
+import type { VoiceServiceConfig, VoiceServiceEventHandlers } from './IVoiceService'
 import { VoiceServiceFactory } from './VoiceServiceFactory'
 import { configService } from '@/config'
 import type { Scenario } from '@/types'
@@ -28,9 +29,12 @@ export class VoiceService {
     return {
       apiKey: appConfig.apiKey,
       appId: appConfig.appId,
+      secretKey: appConfig.secretKey,
       modelProvider: appConfig.modelProvider === 'gpt-4o' ? 'openai' : 'doubao',
+      backendUrl: appConfig.backendUrl || 'http://localhost:8080',
       sampleRate: appConfig.sampleRate,
       audioChunkSize: appConfig.audioChunkSize,
+      audioInputDeviceId: appConfig.audioInputDeviceId,
       vadEnabled: appConfig.vadEnabled,
       vadThreshold: appConfig.vadThreshold,
       vadSilenceDuration: appConfig.vadSilenceDuration,
@@ -43,6 +47,17 @@ export class VoiceService {
    */
   updateConfig(): void {
     this.config = this.buildConfigFromAppConfig()
+    if (this.adapter) {
+      this.adapter.updateConfig(this.config)
+    }
+  }
+  
+  /**
+   * 设置麦克风输入设备
+   */
+  setAudioInputDevice(deviceId: string): void {
+    this.config.audioInputDeviceId = deviceId
+    configService.updateConfig({ audioInputDeviceId: deviceId })
     if (this.adapter) {
       this.adapter.updateConfig(this.config)
     }
@@ -126,10 +141,30 @@ export class VoiceService {
    * 测试连接
    */
   async testConnection(): Promise<{ success: boolean; message: string; latency?: number }> {
+    // 关键：测试前先从 configService 重新读取最新配置
+    this.config = this.buildConfigFromAppConfig()
+    
+    console.log('[VoiceService] 开始测试连接...')
+    console.log('[VoiceService] 当前配置:', {
+      modelProvider: this.config.modelProvider,
+      hasApiKey: !!this.config.apiKey,
+      hasAppId: !!this.config.appId,
+      sampleRate: this.config.sampleRate
+    })
+    
+    // 验证必要配置
+    if (!this.config.apiKey) {
+      return { success: false, message: '请先填写 API Key' }
+    }
+    if (!this.config.appId && this.config.modelProvider === 'doubao') {
+      return { success: false, message: '豆包模型需要填写 App ID' }
+    }
+    
     // 临时创建适配器进行测试
     const testAdapter = VoiceServiceFactory.createVoiceService(this.config)
     const result = await testAdapter.testConnection()
     
+    console.log('[VoiceService] 测试结果:', result)
     return result
   }
   
@@ -142,7 +177,9 @@ export class VoiceService {
     
     // 如果适配器已存在，立即设置
     if (this.adapter) {
-      this.adapter.on(event, handler)
+      // 将 onXxx 转换为 xxx
+      const eventType = event.replace(/^on/, '').toLowerCase() as any
+      this.adapter.on(eventType, handler)
     }
   }
   
@@ -203,7 +240,9 @@ export class VoiceService {
     if (!this.adapter) return
     
     Object.entries(this.eventHandlers).forEach(([event, handler]) => {
-      this.adapter!.on(event as keyof VoiceServiceEventHandlers, handler)
+      // 将 onXxx 转换为 xxx
+      const eventType = event.replace(/^on/, '').toLowerCase() as any
+      this.adapter!.on(eventType, handler)
     })
   }
 }

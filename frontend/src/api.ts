@@ -1,7 +1,7 @@
-import type { Scenario, PronunciationScore, GrammarFeedback } from './types'
+import type { Scenario, PronunciationScore, GrammarFeedback, AiChatResponse, AgentInfo, PipelineConfig } from './types'
 
 // API 基础配置
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
 // 统一响应类型
 interface ApiResponse<T> {
@@ -44,7 +44,7 @@ interface PracticeSummaryResponse {
 }
 
 // 请求头配置
-const getHeaders = () => {
+export const getHeaders = () => {
   return {
     'Content-Type': 'application/json',
   }
@@ -187,6 +187,173 @@ export const api = {
     if (result.code !== 200) {
       throw new Error(result.message)
     }
+    return result.data
+  },
+
+  // ====== ASR→LLM→TTS 管线 API (来自 everyone-can-use-english) ======
+
+  /**
+   * 获取可用 AI 角色列表
+   * GET /api/practice/agents
+   */
+  async getAiAgents(): Promise<AgentInfo[]> {
+    const response = await fetch(`${API_BASE_URL}/api/practice/agents`, {
+      method: 'GET',
+      headers: getHeaders(),
+    })
+    const result: ApiResponse<AgentInfo[]> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
+    return result.data
+  },
+
+  /**
+   * AI 口语练习对话（触发 ASR→LLM→TTS 管线）
+   * POST /api/practice/chat
+   */
+  async sendAiPracticeChat(
+    sessionId: string,
+    text: string,
+    userId?: string,
+    useAsr?: boolean,
+    useTts?: boolean,
+    pipelineConfig?: Partial<PipelineConfig>
+  ): Promise<AiChatResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/practice/chat`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        sessionId,
+        text,
+        userId,
+        useAsr,
+        useTts,
+        pipelineConfig,
+      }),
+    })
+    const result: ApiResponse<AiChatResponse> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
+    return result.data
+  },
+
+  /**
+   * 流式 AI 口语练习对话（Server-Sent Events）
+   * GET /api/practice/chat/stream
+   */
+  async *streamAiPracticeChat(
+    sessionId: string,
+    text: string,
+    options?: {
+      agentName?: string;
+      llmEngine?: string;
+      llmModel?: string;
+      llmApiKey?: string;
+      llmBaseUrl?: string;
+    }
+  ): AsyncGenerator<string, void, unknown> {
+    const params = new URLSearchParams({
+      sessionId,
+      text,
+      ...(options?.agentName && { agentName: options.agentName }),
+      ...(options?.llmEngine && { llmEngine: options.llmEngine }),
+      ...(options?.llmModel && { llmModel: options.llmModel }),
+      ...(options?.llmApiKey && { llmApiKey: options.llmApiKey }),
+      ...(options?.llmBaseUrl && { llmBaseUrl: options.llmBaseUrl }),
+    })
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/practice/chat/stream?${params}`,
+      { headers: getHeaders() }
+    )
+
+    if (!response.ok) {
+      throw new Error(`Stream request failed: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // 处理 SSE 格式的数据
+        // 格式: data: {...}\n\n
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (data && data !== '[DONE]') {
+              yield data
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  },
+
+  /**
+   * 获取用户管线配置
+   * GET /api/settings/ai-pipeline?userId=xxx
+   */
+  async getAiPipelineConfig(userId: string): Promise<PipelineConfig> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/settings/ai-pipeline?userId=${userId}`,
+      { method: 'GET', headers: getHeaders() }
+    )
+    const result: ApiResponse<PipelineConfig> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
+    return result.data
+  },
+
+  /**
+   * 保存用户管线配置
+   * POST /api/settings/ai-pipeline?userId=xxx
+   */
+  async saveAiPipelineConfig(
+    userId: string,
+    config: Partial<PipelineConfig>
+  ): Promise<void> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/settings/ai-pipeline?userId=${userId}`,
+      {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(config),
+      }
+    )
+    const result: ApiResponse<null> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
+  },
+
+  /**
+   * 测试 LLM 引擎连接
+   * POST /api/practice/test-llm
+   */
+  async testLlmConnection(params: {
+    engine: string
+    apiKey: string
+    baseUrl: string
+    model: string
+  }): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/practice/test-llm`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(params),
+    })
+    const result: ApiResponse<{ success: boolean; message: string }> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
     return result.data
   },
 }

@@ -32,6 +32,7 @@ export interface Scenario {
   tag: string;
   welcomeMessage: string;
   welcomeTranslation: string;
+  systemPrompt: string;
   questions: InterviewQuestion[];
   emoji?: string;
   difficulty?: number;
@@ -44,4 +45,64 @@ export interface PronunciationScore {
   grammar: number;
   overall: number;
   feedbackSummary: string;
+}
+
+// ====== ASR→LLM→TTS 管线相关类型 (来自 everyone-can-use-english) ======
+
+/** AI 角色信息 */
+export interface AgentInfo {
+  name: string;
+  description: string;
+  language: string;
+  ttsVoice: string;
+  ttsModel: string;
+}
+
+/** LLM 引擎类型 */
+export type LlmEngine = 'openai' | 'deepseek' | 'glm' | 'qianwen' | 'doubao';
+
+/** AI 管线配置 */
+export interface PipelineConfig {
+  useAsr: boolean;
+  useTts: boolean;
+  agentName: string;
+  asrEngine: string;
+  llmEngine: LlmEngine;
+  llmModel: string;
+  llmApiKey?: string;       // LLM API Key（可选，不持久化存储）
+  llmBaseUrl?: string;      // LLM Base URL（可选）
+  llmTemperature: number;
+  ttsEngine: string;
+  ttsModel: string;
+  ttsVoice: string;
+}
+
+/** AI 对话请求 */
+export interface AiChatRequest {
+  sessionId: string;
+  text: string;
+  userId?: string;
+  useAsr?: boolean;
+  useTts?: boolean;
+  pipelineConfig?: Partial<PipelineConfig>;
+}
+
+/** AI 对话响应 */
+export interface AiChatResponse {
+  userText: string;
+  aiResponseText: string;
+  translatedText?: string;
+  analysisText?: string;
+  ttsUrl?: string;
+  agentName: string;
+  agentDescription: string;
+  pipelineConfig: {
+    useAsr: boolean;
+    useTts: boolean;
+    asrEngine: string;
+    llmModel: string;
+    ttsEngine: string;
+    ttsModel: string;
+    ttsVoice: string;
+  };
 }

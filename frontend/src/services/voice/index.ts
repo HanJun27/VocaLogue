@@ -3,7 +3,7 @@
  */
 
 // 核心接口
-export { IVoiceService } from './IVoiceService'
+export type { IVoiceService } from './IVoiceService'
 export type { 
   VoiceServiceConfig, 
   VoiceServiceEventHandlers, 

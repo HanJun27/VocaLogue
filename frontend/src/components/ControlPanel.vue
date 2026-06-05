@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
-import { Mic, Keyboard, Send, Subtitles, Award } from 'lucide-vue-next'
+import { ref, computed, watch, nextTick } from 'vue'
+import { Mic, Keyboard, Send, Subtitles, Award, Settings2, ChevronDown } from 'lucide-vue-next'
+
+interface AudioDeviceInfo {
+  deviceId: string
+  groupId: string
+  kind: string
+  label: string
+}
 
 interface Props {
   isRecording: boolean
@@ -8,6 +15,8 @@ interface Props {
   subtitlesOn: boolean
   hasRating: boolean
   currentTranscript: string
+  audioDevices: AudioDeviceInfo[]
+  selectedAudioDeviceId: string
 }
 
 const props = defineProps<Props>()
@@ -18,16 +27,23 @@ const emit = defineEmits<{
   toggleSubtitles: []
   sendText: [text: string]
   openRatingModal: []
+  changeAudioDevice: [deviceId: string]
 }>()
 
 const typedText = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
+const showDeviceMenu = ref(false)
 
 const handleSubmit = (e: SubmitEvent) => {
   e.preventDefault()
   if (!typedText.value.trim()) return
   emit('sendText', typedText.value.trim())
   typedText.value = ''
+}
+
+const selectDevice = (deviceId: string) => {
+  emit('changeAudioDevice', deviceId)
+  showDeviceMenu.value = false
 }
 
 watch(
@@ -39,6 +55,12 @@ watch(
     }
   }
 )
+
+const selectedDeviceLabel = computed(() => {
+  if (!props.selectedAudioDeviceId) return '默认麦克风'
+  const device = props.audioDevices.find(d => d.deviceId === props.selectedAudioDeviceId)
+  return device?.label || '已选麦克风'
+})
 </script>
 
 <template>
@@ -74,21 +96,67 @@ watch(
 
         <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-4">
           <template v-if="!isTypingMode">
-            <div class="relative flex items-center justify-center">
-              <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
-              <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
+            <div class="relative flex flex-col items-center">
+              <!-- 设备选择器 -->
+              <div class="relative mb-1.5">
+                <button
+                  @click="showDeviceMenu = !showDeviceMenu"
+                  class="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 transition-colors text-[9px] font-medium text-slate-500 cursor-pointer"
+                  title="选择麦克风设备"
+                >
+                  <Settings2 class="w-2.5 h-2.5" />
+                  <span class="max-w-[80px] truncate">{{ selectedDeviceLabel }}</span>
+                  <ChevronDown class="w-2.5 h-2.5" />
+                </button>
 
-              <button
-                @click="isRecording ? emit('stopRecording') : emit('startRecording')"
-                :class="[
-                  'relative w-16 h-16 rounded-full shadow-[0_6px_20px_rgba(0,96,83,0.25)] flex items-center justify-center active:scale-95 transition-all z-10 cursor-pointer',
-                  isRecording ? 'bg-red-500 text-white' : 'bg-[#006053] text-white hover:scale-105'
-                ]"
-                :title="isRecording ? '结束录音并提交' : '开始录音答题'"
-              >
-                <div v-if="isRecording" class="w-4.5 h-4.5 bg-white rounded-sm animate-pulse" />
-                <Mic v-else class="w-6 h-6 stroke-[2.5px]" />
-              </button>
+                <!-- 设备下拉菜单 -->
+                <div
+                  v-if="showDeviceMenu"
+                  class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 max-h-48 overflow-y-auto"
+                >
+                  <button
+                    @click="selectDevice('')"
+                    :class="[
+                      'w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors',
+                      !selectedAudioDeviceId ? 'bg-[#E6F4F1] text-[#006053] font-semibold' : 'text-slate-600'
+                    ]"
+                  >
+                    默认麦克风
+                  </button>
+                  <button
+                    v-for="device in audioDevices"
+                    :key="device.deviceId"
+                    @click="selectDevice(device.deviceId)"
+                    :class="[
+                      'w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors truncate',
+                      selectedAudioDeviceId === device.deviceId ? 'bg-[#E6F4F1] text-[#006053] font-semibold' : 'text-slate-600'
+                    ]"
+                  >
+                    {{ device.label || `麦克风 (${device.deviceId.slice(0, 8)}...)` }}
+                  </button>
+                  <div v-if="audioDevices.length === 0" class="px-3 py-2 text-xs text-slate-400 text-center">
+                    未检测到其他麦克风设备
+                  </div>
+                </div>
+              </div>
+
+              <!-- 录音按钮区域 -->
+              <div class="relative flex items-center justify-center">
+                <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
+                <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
+
+                <button
+                  @click="isRecording ? emit('stopRecording') : emit('startRecording')"
+                  :class="[
+                    'relative w-16 h-16 rounded-full shadow-[0_6px_20px_rgba(0,96,83,0.25)] flex items-center justify-center active:scale-95 transition-all z-10 cursor-pointer',
+                    isRecording ? 'bg-red-500 text-white' : 'bg-[#006053] text-white hover:scale-105'
+                  ]"
+                  :title="isRecording ? '结束录音并提交' : '开始录音答题'"
+                >
+                  <div v-if="isRecording" class="w-4.5 h-4.5 bg-white rounded-sm animate-pulse" />
+                  <Mic v-else class="w-6 h-6 stroke-[2.5px]" />
+                </button>
+              </div>
             </div>
           </template>
 
@@ -142,5 +210,12 @@ watch(
         </button>
       </div>
     </div>
+
+    <!-- 设备选择器背景遮罩 -->
+    <div
+      v-if="showDeviceMenu"
+      class="fixed inset-0 z-40"
+      @click="showDeviceMenu = false"
+    ></div>
   </div>
 </template>

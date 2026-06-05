@@ -34,7 +34,9 @@ public class CorsConfig {
         config.setMaxAge(3600L);
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        // 添加WebSocket端点支持
         source.registerCorsConfiguration("/api/**", config);
+        source.registerCorsConfiguration("/api/voice/**", config);
         
         return new CorsFilter(source);
     }

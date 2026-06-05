@@ -3,7 +3,8 @@
  * 根据配置创建对应的语音服务适配器
  */
 
-import { IVoiceService, VoiceServiceConfig } from './IVoiceService'
+import type { IVoiceService } from './IVoiceService'
+import type { VoiceServiceConfig } from './IVoiceService'
 import { OpenAIVoiceServiceAdapter } from './adapters/OpenAIVoiceServiceAdapter'
 import { DoubaoVoiceServiceAdapter } from './adapters/DoubaoVoiceServiceAdapter'
 
@@ -17,11 +18,15 @@ export class VoiceServiceFactory {
    * @returns 语音服务实例
    */
   static createVoiceService(config: VoiceServiceConfig): IVoiceService {
+    console.log('[VoiceServiceFactory] 创建语音服务适配器，模型提供商:', config.modelProvider)
+    
     switch (config.modelProvider) {
       case 'openai':
+        console.log('[VoiceServiceFactory] 创建 OpenAI 适配器')
         return new OpenAIVoiceServiceAdapter(config)
       
       case 'doubao':
+        console.log('[VoiceServiceFactory] 创建豆包适配器')
         return new DoubaoVoiceServiceAdapter(config)
       
       case 'custom':

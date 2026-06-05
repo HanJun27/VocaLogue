@@ -2,6 +2,7 @@ package com.lingoai.controller;
 
 import com.lingoai.dto.request.CreateConversationRequest;
 import com.lingoai.dto.request.SendMessageRequest;
+import com.lingoai.dto.response.AiChatResponse;
 import com.lingoai.dto.response.ApiResponse;
 import com.lingoai.dto.response.ConversationDTO;
 import com.lingoai.dto.response.MessageDTO;
@@ -29,9 +30,13 @@ public class ConversationController {
     @PostMapping
     public ResponseEntity<ApiResponse<ConversationDTO>> createConversation(
             @Valid @RequestBody CreateConversationRequest request) {
-        log.info("创建会话: scenarioId={}, userId={}", request.getScenarioId(), request.getUserId());
+        log.info("创建会话: scenarioId={}, userId={}, useAiPractice={}",
+                request.getScenarioId(), request.getUserId(), request.getUseAiPractice());
         ConversationDTO conversation = conversationService.createConversation(
-                request.getScenarioId(), request.getUserId());
+                request.getScenarioId(),
+                request.getUserId(),
+                request.getUseAiPractice(),
+                request.getPipelineConfig());
         return ResponseEntity.ok(ApiResponse.success(conversation));
     }
 
@@ -48,6 +53,25 @@ public class ConversationController {
                 request.getGrammarFeedback()
         );
         return ResponseEntity.ok(ApiResponse.success(message));
+    }
+
+    /**
+     * AI 口语陪练：发送消息并获取 AI 回复
+     * POST /api/conversations/{sessionId}/ai-practice
+     */
+    @PostMapping("/{sessionId}/ai-practice")
+    public ResponseEntity<ApiResponse<AiChatResponse>> sendAiPracticeMessage(
+            @PathVariable String sessionId,
+            @Valid @RequestBody SendMessageRequest request) {
+        log.info("AI practice message: sessionId={}", sessionId);
+        AiChatResponse response = conversationService.sendAiPracticeMessage(
+                sessionId,
+                request.getText(),
+                request.getUseVoice(),  // useVoice -> useAsr
+                false,                  // useTts 默认关闭
+                null
+        );
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @GetMapping("/{sessionId}")

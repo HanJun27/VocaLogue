@@ -40,3 +40,80 @@ logging:
 pronunciation:
   api-key: ${PRONUNCIATION_API_KEY:test-key}
   api-url: ${PRONUNCIATION_API_URL:http://localhost:8081}
+
+# ========== AI 服务配置 (from everyone-can-use-english) ==========
+ai:
+  # LLM 配置
+  llm:
+    default-engine: openai       # openai | deepseek | glm | qianwen | doubao | ollama
+    openai:
+      api-key: ${OPENAI_API_KEY:sk-your-key}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      default-model: gpt-4o
+      temperature: 0.8
+    # DeepSeek (深度求索) - 国产大模型
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      default-model: deepseek-v4-flash
+      temperature: 0.8
+    # GLM (智谱) - 国产大模型
+    glm:
+      api-key: ${GLM_API_KEY:}
+      base-url: ${GLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+      default-model: glm-5.1
+      temperature: 0.8
+    # Qianwen (通义千问) - 国产大模型
+    qianwen:
+      api-key: ${QIANWEN_API_KEY:}
+      base-url: ${QIANWEN_BASE_URL:https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation}
+      default-model: qwen-2-plus
+      temperature: 0.8
+    # Doubao (豆包) - 国产大模型
+    doubao:
+      api-key: ${DOUBAO_API_KEY:}
+      base-url: ${DOUBAO_BASE_URL:https://api.doubao.com/v1}
+      default-model: doubao-pro
+      temperature: 0.8
+    # 支持 OpenAI 兼容接口的其他提供商
+    enjoyai:
+      api-key: ${ENJOYAI_API_KEY:}
+      base-url: ${ENJOYAI_BASE_URL:}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      default-model: llama3
+
+  # TTS 配置 (from enjoy-app TTS_PROVIDERS)
+  tts:
+    default-engine: openai       # openai | enjoyai
+    openai:
+      api-key: ${OPENAI_API_KEY:sk-your-key}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      default-model: tts-1
+      default-voice: alloy
+    enjoyai:
+      api-key: ${ENJOYAI_API_KEY:}
+      base-url: ${ENJOYAI_BASE_URL:}
+      default-model: openai/tts-1
+      default-voice: alloy
+  # Azure 语音 (from enjoy-app azure-speech-sdk.ts)
+  azure:
+    speech-key: ${AZURE_SPEECH_KEY:}
+    speech-region: ${AZURE_SPEECH_REGION:eastasia}
+
+  # ASR 配置
+  asr:
+    default-engine: doubao       # doubao | azure | whisper
+    # 豆包实时语音 (已有集成)
+    doubao:
+      app-id: ${DOUBAO_APP_ID:}
+      access-token: ${DOUBAO_ACCESS_TOKEN:}
+      secret-key: ${DOUBAO_SECRET_KEY:}
+      ws-url: wss://openspeech.bytedance.com/api/v3/realtime/dialogue
+    # Azure 语音识别
+    azure:
+      speech-key: ${AZURE_SPEECH_KEY:}
+      speech-region: ${AZURE_SPEECH_REGION:eastasia}
+
+  # 音频文件存储路径
+  audio-storage-path: ${AI_AUDIO_PATH:./data/audio}

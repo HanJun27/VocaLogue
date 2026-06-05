@@ -3,10 +3,9 @@
  * 实现 OpenAI GPT-4o Realtime API
  */
 
-import { 
-  IVoiceService, 
+import type { IVoiceService } from '../IVoiceService'
+import type { 
   VoiceServiceConfig, 
-  TranscriptEvent, 
   ConnectionTestResult,
   VoiceServiceEventHandlers 
 } from '../IVoiceService'
@@ -88,13 +87,17 @@ export class OpenAIVoiceServiceAdapter implements IVoiceService {
     
     try {
       // 获取麦克风权限
+      const audioConstraints: MediaTrackConstraints = {
+        sampleRate: this.config.sampleRate,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true
+      }
+      if (this.config.audioInputDeviceId) {
+        audioConstraints.deviceId = { exact: this.config.audioInputDeviceId }
+      }
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: this.config.sampleRate,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true
-        }
+        audio: audioConstraints
       })
       
       // 使用 MediaRecorder 录制
@@ -175,7 +178,11 @@ export class OpenAIVoiceServiceAdapter implements IVoiceService {
   async testConnection(): Promise<ConnectionTestResult> {
     const startTime = Date.now()
     
+    console.log('[OpenAIAdapter] 开始测试连接...')
+    console.log('[OpenAIAdapter] API Key:', this.config.apiKey ? `${this.config.apiKey.substring(0, 10)}...` : '未设置')
+    
     try {
+      console.log('[OpenAIAdapter] 尝试请求 OpenAI API...')
       const response = await fetch('https://api.openai.com/v1/models', {
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`
@@ -183,8 +190,10 @@ export class OpenAIVoiceServiceAdapter implements IVoiceService {
       })
       
       const latency = Date.now() - startTime
+      console.log('[OpenAIAdapter] 响应状态:', response.status, response.statusText)
       
       if (response.ok) {
+        console.log('[OpenAIAdapter] 测试成功')
         return {
           success: true,
           message: 'OpenAI API Key 有效',
@@ -192,16 +201,18 @@ export class OpenAIVoiceServiceAdapter implements IVoiceService {
         }
       } else {
         const errorData = await response.json().catch(() => null)
+        console.error('[OpenAIAdapter] 测试失败:', errorData)
         return {
           success: false,
-          message: errorData?.error?.message || 'API Key 无效',
+          message: errorData?.error?.message || `API Key 无效 (状态码: ${response.status})`,
           latency
         }
       }
     } catch (error) {
+      console.error('[OpenAIAdapter] 网络错误:', error)
       return {
         success: false,
-        message: '网络连接失败，请检查网络',
+        message: `网络连接失败: ${error instanceof Error ? error.message : '未知错误'}`,
         latency: Date.now() - startTime
       }
     }
