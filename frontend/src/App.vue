@@ -9,6 +9,11 @@ import PracticeSummary from '@/components/PracticeSummary.vue'
 import { SCENARIOS, MOCK_RATING_DATABASE } from '@/scenariosData'
 import type { DialectMessage, Scenario, PronunciationScore, GrammarFeedback } from '@/types'
 import { Award } from 'lucide-vue-next'
+import api from '@/api'
+
+// API 模式控制（当前为演示使用本地模拟数据）
+const USE_API_MODE = ref(false)
+const currentSessionId = ref<string | null>(null)
 
 const currentView = ref<'scenarios' | 'practice' | 'summary'>('scenarios')
 const currentScenario = ref<Scenario>(SCENARIOS[0])
@@ -257,7 +262,7 @@ const generateLexicalCorrection = (text: string, questionKeywords: Scenario['que
   }
 }
 
-const handleUserAnswerSubmit = (text: string) => {
+const handleUserAnswerSubmit = async (text: string) => {
   window.speechSynthesis?.cancel()
   isPlayingAudio.value = false
   activeVoiceMessageId.value = null
@@ -283,6 +288,21 @@ const handleUserAnswerSubmit = (text: string) => {
   }
 
   messages.value = [...messages.value, userMsg]
+
+  // 如果启用 API 模式，保存消息到后端
+  if (USE_API_MODE.value && currentSessionId.value) {
+    try {
+      await api.saveMessage(
+        currentSessionId.value,
+        text,
+        false,
+        currentRating.value?.overall,
+        feedbackResult
+      )
+    } catch (error) {
+      console.error('保存消息失败:', error)
+    }
+  }
 
   const mockRatingOption = MOCK_RATING_DATABASE[Math.floor(Math.random() * MOCK_RATING_DATABASE.length)]
   const generatedScore: PronunciationScore = {
@@ -351,15 +371,50 @@ const handleGlobalToggleSubtitles = () => {
   )
 }
 
-const handleSelectScenario = (sc: Scenario) => {
-  currentScenario.value = sc
+const handleSelectScenario = async (sc: Scenario) => {
+  // 如果启用 API 模式，从后端获取完整场景数据
+  if (USE_API_MODE.value) {
+    try {
+      const fullScenario = await api.getScenarioById(sc.id)
+      currentScenario.value = fullScenario
+    } catch (error) {
+      console.error('获取场景详情失败:', error)
+      // 回退到本地数据
+      currentScenario.value = sc
+    }
+  } else {
+    currentScenario.value = sc
+  }
   resetConversationForScenario(sc)
 }
 
-const handleViewChange = (view: 'scenarios' | 'practice' | 'summary') => {
+const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary') => {
   window.speechSynthesis?.cancel()
   isPlayingAudio.value = false
   activeVoiceMessageId.value = null
+
+  // 如果切换到练习视图，创建会话
+  if (view === 'practice' && USE_API_MODE.value) {
+    try {
+      const conversation = await api.createConversation(currentScenario.value.id)
+      currentSessionId.value = conversation.sessionId
+      console.log('创建会话成功:', conversation.sessionId)
+    } catch (error) {
+      console.error('创建会话失败:', error)
+    }
+  }
+
+  // 如果离开练习视图，结束会话
+  if (currentView.value === 'practice' && view !== 'practice' && currentSessionId.value) {
+    try {
+      await api.endConversation(currentSessionId.value)
+      console.log('会话已结束')
+    } catch (error) {
+      console.error('结束会话失败:', error)
+    }
+    currentSessionId.value = null
+  }
+
   currentView.value = view
 }
 </script>
