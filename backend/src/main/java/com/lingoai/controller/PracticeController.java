@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -151,7 +152,6 @@ public class PracticeController {
                             .findFirst()
                             .orElse(null);
                 }
-                log.info("Agent found: {}", agent != null ? agent.getName() : "null");
 
                 List<Map<String, String>> messages = new ArrayList<>();
                 messages.add(Map.of("role", "user", "content", text));
@@ -159,47 +159,47 @@ public class PracticeController {
                 String engine = llmEngine != null ? llmEngine : "openai";
                 String model = llmModel != null ? llmModel : "gpt-4o";
 
-                log.info("Calling LLM: engine={}, model={}", engine, model);
+                log.info("Calling LLM stream: engine={}, model={}", engine, model);
 
-                // 调用流式 LLM，获取 SSE 格式的数据
-                String sseData = llmService.streamChat(
+                // 使用 Consumer 回调实现真正的逐行流式发送
+                llmService.streamChat(
                         messages,
                         agent != null ? agent.getSystemPrompt() : null,
                         model,
                         agent != null ? agent.getTemperature() : 0.8,
                         llmApiKey,
                         llmBaseUrl,
-                        engine
-                );
-
-                log.info("LLM response received, length={}", sseData.length());
-
-                // 将 SSE 数据按行分割，逐行发送
-                // 注意：OpenAiClient 返回的数据已经是 SSE 格式（data: {...}），
-                // SseEmitter 会自动添加 "data: " 前缀，所以需要提取纯 JSON 内容
-                String[] lines = sseData.split("\n");
-                for (String line : lines) {
-                    if (line.startsWith("data: ")) {
-                        String jsonContent = line.substring(6).trim();
-                        // 跳过结束标记
-                        if ("[DONE]".equals(jsonContent)) {
-                            continue;
+                        engine,
+                        line -> {
+                            try {
+                                if (line.startsWith("data: ")) {
+                                    String jsonContent = line.substring(6).trim();
+                                    if ("[DONE]".equals(jsonContent)) {
+                                        return;
+                                    }
+                                    emitter.send(SseEmitter.event()
+                                            .name("message")
+                                            .data(jsonContent));
+                                }
+                            } catch (IOException e) {
+                                throw new RuntimeException("Failed to send SSE event", e);
+                            }
                         }
-                        emitter.send(SseEmitter.event()
-                                .name("message")
-                                .data(jsonContent));
-                    }
-                }
+                );
 
                 emitter.complete();
             } catch (Exception e) {
                 log.error("Stream chat failed", e);
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("error")
-                            .data("Error: " + e.getMessage()));
-                } catch (IOException ex) {
-                    log.warn("Failed to send error event", ex);
+                if (e instanceof RuntimeException && e.getCause() instanceof IOException) {
+                    log.warn("Client disconnected, stream cancelled");
+                } else {
+                    try {
+                        emitter.send(SseEmitter.event()
+                                .name("error")
+                                .data("Error: " + e.getMessage()));
+                    } catch (IOException ex) {
+                        log.warn("Failed to send error event", ex);
+                    }
                 }
                 emitter.completeWithError(e);
             }

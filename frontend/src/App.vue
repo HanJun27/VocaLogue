@@ -1351,7 +1351,7 @@ onUnmounted(() => {
         @view-change="handleViewChange"
       />
 
-      <main class="flex-1 w-full flex flex-col relative pt-16">
+      <main class="flex-1 w-full flex flex-col pt-16 min-h-screen">
 
         <ScenarioSelection
           v-if="currentView === 'scenarios'"
@@ -1372,7 +1372,7 @@ onUnmounted(() => {
         />
 
         <template v-else-if="currentView === 'practice'">
-        <div class="flex-1 flex relative overflow-hidden" style="height: calc(100vh - 4rem)">
+        <div class="flex-1 flex" style="height: calc(100vh - 4rem)">
           <!-- 左侧历史对话边栏 -->
           <ConversationSidebar
             :conversations="conversationsList"
@@ -1386,8 +1386,8 @@ onUnmounted(() => {
 
           <!-- 右侧主内容区域 -->
           <div class="flex-1 flex flex-col min-w-0">
-            <!-- 固定顶部状态栏 -->
-            <div class="flex-none px-5 md:px-12 pt-4 pb-2 flex items-center justify-between sticky top-0 bg-gradient-to-b from-[#f7fbfa] to-transparent z-10">
+            <!-- 固定顶部状态栏（不随聊天滚动） -->
+            <div class="flex-none px-5 md:px-12 pt-4 pb-2 flex items-center justify-between bg-gradient-to-b from-[#f7fbfa] to-transparent z-10">
               <div class="flex items-center gap-2">
                 <span class="px-2.5 py-1 bg-[#b4ffed] text-[#006053] font-mono text-[10px] font-black uppercase rounded-md tracking-wider">
                   {{ currentScenario.tag }}
@@ -1421,7 +1421,7 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- 可滚动的聊天区域 -->
+            <!-- 仅聊天区域可滚动 -->
             <div class="flex-1 min-h-0 overflow-y-auto">
               <ChatArea
                 :messages="messages"
@@ -1434,8 +1434,8 @@ onUnmounted(() => {
               />
             </div>
 
-            <!-- 固定底部控制面板 -->
-            <div class="flex-none sticky bottom-0 z-20">
+            <!-- 固定底部控制面板（不随聊天滚动） -->
+            <div class="flex-none z-20">
               <ControlPanel
                 :is-recording="isRecording"
                 :is-typing-mode="isTypingMode"

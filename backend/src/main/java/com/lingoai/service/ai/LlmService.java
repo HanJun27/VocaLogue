@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * LLM 命令服务
@@ -87,13 +88,33 @@ public class LlmService {
                             String baseUrl,
                             String engine) throws IOException {
         List<Map<String, String>> messages = new ArrayList<>();
-        // system prompt
         if (systemPrompt != null) {
             messages.add(Map.of("role", "system", "content", systemPrompt));
         }
         messages.addAll(conversationHistory);
 
         return openAiClient.streamTextCommand(messages, model, temperature, apiKey, baseUrl, engine);
+    }
+
+    /**
+     * 流式对话 — 逐行回调，实现真正的流式响应
+     * @param onChunk 每收到一行 SSE 数据时的回调
+     */
+    public void streamChat(List<Map<String, String>> conversationHistory,
+                          String systemPrompt,
+                          String model,
+                          Double temperature,
+                          String apiKey,
+                          String baseUrl,
+                          String engine,
+                          Consumer<String> onChunk) throws IOException {
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (systemPrompt != null) {
+            messages.add(Map.of("role", "system", "content", systemPrompt));
+        }
+        messages.addAll(conversationHistory);
+
+        openAiClient.streamTextCommand(messages, model, temperature, apiKey, baseUrl, engine, onChunk);
     }
 
     // ==================== punctuate.command.ts — 标点恢复 ====================

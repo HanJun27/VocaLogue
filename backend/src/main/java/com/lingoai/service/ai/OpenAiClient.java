@@ -8,7 +8,9 @@ import com.lingoai.config.AiConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -16,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * OpenAI API 客户端
@@ -96,10 +99,24 @@ public class OpenAiClient {
                                     String apiKey,
                                     String baseUrl,
                                     String engine) throws IOException {
-        // 获取引擎配置
-        AiConfig.LlmProvider provider = getLlmProvider(engine);
+        StringBuilder collector = new StringBuilder();
+        streamTextCommand(messages, model, temperature, apiKey, baseUrl, engine,
+            line -> collector.append(line).append("\n"));
+        return collector.toString();
+    }
 
-        // 使用参数或默认配置
+    /**
+     * 流式文本生成 — 逐行回调，实现真正的流式响应
+     * @param onChunk 每收到一行 SSE 数据时的回调
+     */
+    public void streamTextCommand(List<Map<String, String>> messages,
+                                  String model,
+                                  Double temperature,
+                                  String apiKey,
+                                  String baseUrl,
+                                  String engine,
+                                  Consumer<String> onChunk) throws IOException {
+        AiConfig.LlmProvider provider = getLlmProvider(engine);
         String effectiveApiKey = (apiKey != null && !apiKey.isEmpty()) ? apiKey :
                                  (provider != null ? provider.getApiKey() : "");
         String effectiveBaseUrl = (baseUrl != null && !baseUrl.isEmpty()) ? baseUrl :
@@ -107,9 +124,8 @@ public class OpenAiClient {
         String effectiveModel = (model != null && !model.isEmpty()) ? model :
                                 (provider != null && provider.getDefaultModel() != null ?
                                  provider.getDefaultModel() : "gpt-4o");
-
         ObjectNode requestBody = buildStreamChatRequest(messages, effectiveModel, temperature, engine);
-        return executeStreamChatCompletion(requestBody, effectiveApiKey, effectiveBaseUrl);
+        executeStreamChatCompletion(requestBody, effectiveApiKey, effectiveBaseUrl, onChunk);
     }
 
     /**
@@ -190,9 +206,10 @@ public class OpenAiClient {
      * 执行流式聊天补全 API 调用
      * 使用流式处理器逐行读取 SSE 响应
      */
-    private String executeStreamChatCompletion(ObjectNode requestBody,
-                                              String apiKey,
-                                              String baseUrl) throws IOException {
+    private void executeStreamChatCompletion(ObjectNode requestBody,
+                                             String apiKey,
+                                             String baseUrl,
+                                             Consumer<String> onChunk) throws IOException {
         String url = buildChatUrl(baseUrl);
         String bearerToken = apiKey != null ? apiKey : getLlmApiKey();
 
@@ -205,25 +222,31 @@ public class OpenAiClient {
                     .timeout(Duration.ofSeconds(120))
                     .build();
 
-            // 使用流式处理器逐行读取
-            java.net.http.HttpResponse<java.util.stream.Stream<String>> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
+            HttpResponse<java.io.InputStream> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
             if (response.statusCode() != 200) {
-                // 读取错误信息
                 StringBuilder errorBody = new StringBuilder();
-                response.body().forEach(line -> errorBody.append(line).append("\n"));
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(response.body()))) {
+                    br.lines().forEach(line -> errorBody.append(line).append("\n"));
+                }
                 log.error("OpenAI API streaming error: status={}, body={}", response.statusCode(), errorBody);
                 throw new IOException("OpenAI API failed: " + response.statusCode());
             }
 
-            // 收集所有行并组装成 SSE 格式
-            StringBuilder sseData = new StringBuilder();
-            response.body().forEach(line -> {
-                sseData.append(line).append("\n");
-            });
-
-            return sseData.toString();
+            // 逐行读取 SSE 流，实时回调
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(response.body()))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (line.startsWith("data: ")) {
+                        String data = line.substring(6).trim();
+                        if ("[DONE]".equals(data)) {
+                            continue;
+                        }
+                        onChunk.accept(line);
+                    }
+                }
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Request interrupted", e);
