@@ -40,10 +40,38 @@ services:
       timeout: 10s
       retries: 3
 
+  # Faster-Whisper ASR 服务 (Python gRPC)
+  asr-service:
+    build:
+      context: ./asr-service
+      dockerfile: Dockerfile
+    container_name: lingoai-asr
+    ports:
+      - "50051:50051"
+    volumes:
+      - asr_models:/app/models
+    environment:
+      ASR_PORT: "50051"
+      ASR_MODEL: large-v2
+      ASR_DEVICE: cpu
+      ASR_COMPUTE_TYPE: int8
+      ASR_DOWNLOAD_ROOT: /app/models
+    networks:
+      - lingoai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc; ch=grpc.insecure_channel('localhost:50051'); print(ch)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  asr_models:
     driver: local
 
 networks:

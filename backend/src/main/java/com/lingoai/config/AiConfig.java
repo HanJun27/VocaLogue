@@ -65,6 +65,7 @@ public class AiConfig {
         private String defaultEngine = "doubao";
         private AsrProvider doubao = new AsrProvider();
         private AsrProvider azure = new AsrProvider();
+        private FasterWhisperProvider fasterWhisper = new FasterWhisperProvider();
     }
 
     @Data
@@ -75,5 +76,19 @@ public class AiConfig {
         private String wsUrl;
         private String speechKey;
         private String speechRegion;
+    }
+
+    @Data
+    public static class FasterWhisperProvider {
+        private String host = "localhost";
+        private int port = 50051;
+        private String model = "large-v2";
+        private String device = "cuda";        // cuda / cpu
+        private String computeType = "int8_float16";  // int8 / float16 / int8_float16
+        private boolean enableVad = true;
+        private int vadThresholdMs = 500;
+        private int windowSizeMs = 500;
+        private String language = "";
+        private String downloadRoot = "./models";
     }
 }

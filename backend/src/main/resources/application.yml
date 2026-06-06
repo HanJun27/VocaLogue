@@ -103,7 +103,7 @@ ai:
 
   # ASR 配置
   asr:
-    default-engine: doubao       # doubao | azure | whisper
+    default-engine: faster-whisper # doubao | azure | whisper | faster-whisper
     # 豆包实时语音 (已有集成)
     doubao:
       app-id: ${DOUBAO_APP_ID:}
@@ -114,6 +114,18 @@ ai:
     azure:
       speech-key: ${AZURE_SPEECH_KEY:}
       speech-region: ${AZURE_SPEECH_REGION:eastasia}
+    # Faster-Whisper 本地 ASR (Python gRPC 微服务)
+    faster-whisper:
+      host: ${ASR_GRPC_HOST:localhost}
+      port: ${ASR_GRPC_PORT:50051}
+      model: ${ASR_MODEL:large-v2}
+      device: ${ASR_DEVICE:cuda}
+      compute-type: ${ASR_COMPUTE_TYPE:int8_float16}
+      enable-vad: ${ASR_ENABLE_VAD:true}
+      vad-threshold-ms: ${ASR_VAD_THRESHOLD_MS:500}
+      window-size-ms: ${ASR_WINDOW_SIZE_MS:500}
+      language: ${ASR_LANGUAGE:}
+      download-root: ${ASR_DOWNLOAD_ROOT:./models}
 
   # 音频文件存储路径
   audio-storage-path: ${AI_AUDIO_PATH:./data/audio}

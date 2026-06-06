@@ -486,12 +486,8 @@ const handleStopRecording = async () => {
       // 调用 Whisper 转录
       const result = await whisperASRService.transcribe(audioBlob, { language: 'en' })
       
-      if (result.text && result.text.trim().length > 2) {
-        console.log('[App] Whisper 转录成功:', result.text)
-        handleUserAnswerSubmit(result.text.trim())
-      } else {
-        alert('没有检测到清晰的英语演说，请按住麦克风再说一遍，或选择键盘输入！')
-      }
+      console.log('[App] Whisper 转录成功:', result.text)
+      handleUserAnswerSubmit(result.text.trim())
     } catch (err: any) {
       console.error('[App] Whisper 转录失败:', err)
       alert(`转录失败: ${err.message}\n请重试或使用键盘输入！`)

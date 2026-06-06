@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package asr;
+
+option java_package = "com.lingoai.grpc.asr";
+option java_multiple_files = false;
+option java_outer_classname = "AsrServiceProto";
+
+// ASR gRPC 服务定义
+service FasterWhisperASR {
+  // 双向流式 RPC：客户端流式发送音频，服务端流式返回识别结果
+  rpc StreamRecognize(stream AudioChunk) returns (stream AsrResult);
+
+  // 非流式识别：上传完整音频文件，返回完整识别结果
+  rpc RecognizeFile(AudioFile) returns (RecognizeResult);
+
+  // 获取服务状态（模型是否加载完成等）
+  rpc GetStatus(StatusRequest) returns (StatusResponse);
+
+  // 设置 ASR 参数（模型、VAD 等）
+  rpc UpdateSettings(AsrSettings) returns (StatusResponse);
+}
+
+// 音频数据块（流式）
+message AudioChunk {
+  bytes audio_data = 1;           // 音频数据 (PCM 16kHz 16bit mono)
+  AudioFormat format = 2;         // 音频格式
+  bool is_end = 3;                // 是否为最后一块
+  string session_id = 4;          // 会话 ID
+}
+
+// 音频格式
+message AudioFormat {
+  int32 sample_rate = 1;          // 采样率，默认 16000
+  int32 channels = 2;             // 声道数，默认 1
+  int32 bit_depth = 3;            // 位深度，默认 16
+}
+
+// 流式识别结果
+message AsrResult {
+  string text = 1;                // 当前识别文本
+  bool is_final = 2;              // 是否为最终结果
+  float confidence = 3;           // 置信度 (0-1)
+  double start_time = 4;          // 开始时间（秒）
+  double end_time = 5;            // 结束时间（秒）
+  string language = 6;            // 检测到的语言
+  repeated WordTimestamp word_timestamps = 7;  // 词级时间戳
+}
+
+// 词级时间戳
+message WordTimestamp {
+  string word = 1;
+  double start_time = 2;
+  double end_time = 3;
+  float probability = 4;
+}
+
+// 完整音频文件识别请求
+message AudioFile {
+  bytes audio_data = 1;           // 完整音频数据
+  AudioFormat format = 2;         // 音频格式
+  string language = 3;            // 语言代码（可选，自动检测）
+  bool enable_vad = 4;            // 是否启用 VAD
+}
+
+// 完整识别结果
+message RecognizeResult {
+  string text = 1;                // 完整识别文本
+  string language = 2;            // 检测到的语言
+  double duration = 3;            // 音频时长（秒）
+  float confidence = 4;           // 整体置信度
+  repeated Segment segments = 5;  // 分段结果
+}
+
+// 分段结果
+message Segment {
+  int32 id = 1;
+  double start_time = 2;
+  double end_time = 3;
+  string text = 4;
+  float confidence = 5;
+  repeated WordTimestamp words = 6;
+}
+
+// 服务状态请求
+message StatusRequest {}
+
+// 服务状态响应
+message StatusResponse {
+  bool model_loaded = 1;          // 模型是否加载完成
+  string current_model = 2;       // 当前模型名称
+  bool gpu_available = 3;         // GPU 是否可用
+  string device = 4;              // 当前使用的设备 (cuda / cpu)
+  string message = 5;             // 状态描述
+}
+
+// ASR 设置
+message AsrSettings {
+  string model_name = 1;          // 模型名称: large-v3, large-v2, medium, small, tiny
+  string device = 2;              // 推理设备: cuda 或 cpu
+  int32 compute_type = 3;         // 计算类型: 0=int8, 1=float16, 2=float32
+  bool enable_vad = 4;            // 是否启用 VAD
+  int32 vad_threshold_ms = 5;     // VAD 静音阈值（毫秒）
+  int32 window_size_ms = 6;       // 滑动窗口大小（毫秒）
+  string language = 7;            // 默认识别语言
+}

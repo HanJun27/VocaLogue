@@ -1,0 +1,18 @@
+# GPU 版本 docker-compose 配置覆盖
+# 使用方式: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d asr-service
+version: '3.8'
+
+services:
+  asr-service:
+    build:
+      dockerfile: Dockerfile.gpu
+    environment:
+      ASR_DEVICE: cuda
+      ASR_COMPUTE_TYPE: float16
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

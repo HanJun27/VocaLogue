@@ -1,0 +1,42 @@
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+WORKDIR /app
+
+# 安装 Python 和系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    gcc \
+    g++ \
+    libsndfile1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# 安装 Python 依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制应用代码
+COPY app/ ./app/
+COPY generate_proto.py .
+
+# 生成 gRPC 代码
+RUN python generate_proto.py
+
+# 创建模型目录
+RUN mkdir -p /app/models
+
+# 暴露 gRPC 端口
+EXPOSE 50051
+
+# 环境变量
+ENV ASR_PORT=50051
+ENV ASR_MODEL=large-v2
+ENV ASR_DEVICE=cuda
+ENV ASR_COMPUTE_TYPE=float16
+ENV ASR_DOWNLOAD_ROOT=/app/models
+
+# 启动服务
+ENTRYPOINT ["python", "-m", "app.server"]

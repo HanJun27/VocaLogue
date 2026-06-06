@@ -1,0 +1,3 @@
+# Faster-Whisper 模型数量忽略（模型文件较大，使用 volume 挂载）
+models/*
+!models/.gitkeep

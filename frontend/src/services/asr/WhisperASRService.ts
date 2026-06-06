@@ -197,8 +197,10 @@ export class WhisperASRService {
       const result = await response.json()
 
       if (result.code !== 200) {
-        console.error('[WhisperASR] API 错误:', result.message)
-        throw new Error(result.message || '转录失败')
+        // 后端返回的业务错误（如 ASR 引擎不可用）
+        const errorMsg = result.message || result.data?.message || '转录失败'
+        console.error('[WhisperASR] API 业务错误:', result.code, errorMsg)
+        throw new Error(errorMsg)
       }
 
       const data = result.data
@@ -207,6 +209,10 @@ export class WhisperASRService {
         language: data.language,
         duration: data.duration
       })
+
+      if (!data.text || data.text.trim().length === 0) {
+        throw new Error('未识别到语音内容，请重试')
+      }
 
       return {
         text: data.text || '',
