@@ -61,7 +61,7 @@ public class ConversationPipelineService {
         private String llmApiKey;   // LLM API Key（可选）
         private String llmBaseUrl;  // LLM Base URL（可选）
         private Double llmTemperature; // LLM 温度
-        private String ttsEngine;    // TTS 引擎: openai | enjoyai | azure
+        private String ttsEngine;    // TTS 引擎: openai | enjoyai | piper | edge-tts
         private String ttsModel;     // TTS 模型
         private String ttsVoice;     // TTS 声音
 
@@ -74,9 +74,9 @@ public class ConversationPipelineService {
                     .llmEngine("openai")
                     .llmModel("gpt-4o")
                     .llmTemperature(0.8)
-                    .ttsEngine("openai")
+                    .ttsEngine("piper")
                     .ttsModel("tts-1")
-                    .ttsVoice("alloy")
+                    .ttsVoice("en_US-amy-medium")
                     .build();
         }
     }

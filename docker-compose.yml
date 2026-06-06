@@ -66,12 +66,37 @@ services:
       retries: 3
       start_period: 120s
 
+  # TTS 服务 (Python FastAPI — Piper TTS + Edge TTS)
+  tts-service:
+    build:
+      context: ./tts-service
+      dockerfile: Dockerfile
+    container_name: lingoai-tts
+    ports:
+      - "8000:8000"
+    volumes:
+      - tts_models:/app/models/piper
+    environment:
+      TTS_MODELS_DIR: /app/models/piper
+      PIPER_BIN: /usr/local/bin/piper
+    networks:
+      - lingoai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
   asr_models:
+    driver: local
+  tts_models:
     driver: local
 
 networks:

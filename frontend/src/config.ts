@@ -35,8 +35,14 @@ export interface AppConfig {
   pipelineAgentName: string;       // AI 角色名：Ava / Andrew / Emma / Interviewer
   pipelineLlmEngine: string;       // LLM 引擎：openai / deepseek / glm / qianwen / doubao
   pipelineLlmModel: string;        // LLM 模型：根据引擎选择
-  pipelineTtsVoice: string;        // TTS 声音：alloy / echo / fable / onyx / nova / shimmer
-  pipelineTtsEngine: string;       // TTS 引擎：openai / enjoyai
+  pipelineTtsVoice: string;        // TTS 声音：alloy / echo / fable / onyx / nova / shimmer / piper voice id
+  pipelineTtsEngine: string;       // TTS 引擎：openai / enjoyai / piper / edge-tts
+  // 本地 TTS 设置
+  localTtsBaseUrl: string;         // 本地 tts-service 地址
+  localTtsDefaultEngine: string;   // 本地 TTS 引擎: piper / edge-tts
+  localTtsPiperVoice: string;      // Piper 默认语音
+  localTtsPiperSpeed: number;      // Piper 语速
+  localTtsEdgeVoice: string;       // Edge TTS 默认语音
   // 国产大模型 API 配置
   deepseekApiKey: string;          // DeepSeek API Key
   glmApiKey: string;               // GLM (智谱) API Key
@@ -69,6 +75,12 @@ const DEFAULT_CONFIG: AppConfig = {
   pipelineLlmModel: 'gpt-4o',
   pipelineTtsVoice: 'alloy',
   pipelineTtsEngine: 'openai',
+  // 本地 TTS 默认值
+  localTtsBaseUrl: 'http://localhost:8000',
+  localTtsDefaultEngine: 'piper',
+  localTtsPiperVoice: 'en_US-amy-medium',
+  localTtsPiperSpeed: 1.0,
+  localTtsEdgeVoice: 'en-US-AriaNeural',
   // 国产大模型 API 配置默认值
   deepseekApiKey: '',
   glmApiKey: '',

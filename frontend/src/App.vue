@@ -209,7 +209,7 @@ const resetConversationForScenario = (sc: Scenario) => {
   // 如果使用真实语音大模型，不自动播放欢迎语（由 AI 端播放）
   if (currentView.value === 'practice' && !shouldUseVoiceAI.value) {
     setTimeout(() => {
-      speakAudio(sc.welcomeMessage, welcomeMsg.id)
+      handleManualSpeak(sc.welcomeMessage, welcomeMsg.id)
     }, 400)
   }
 }
@@ -246,6 +246,83 @@ const speakAudio = (text: string, messageId: string) => {
     window.speechSynthesis.speak(utterance)
   } else {
     alert('抱歉，您的浏览器不支持语音播放合成 (TTS)')
+  }
+}
+
+/**
+ * 使用本地 TTS 服务（Piper/Edge-TTS）播放语音
+ */
+const playLocalTtsAudio = async (text: string, messageId: string) => {
+  const cfg = configService.getConfig()
+  const baseUrl = cfg.localTtsBaseUrl || 'http://localhost:8000'
+  const engine = cfg.pipelineTtsEngine === 'edge-tts' ? 'edge-tts' : 'piper'
+  const voice = engine === 'piper' ? cfg.localTtsPiperVoice : cfg.localTtsEdgeVoice
+  const speed = cfg.localTtsPiperSpeed || 1.0
+
+  // 取消正在播放的语音
+  if (activeVoiceMessageId.value === messageId && isPlayingAudio.value) {
+    isPlayingAudio.value = false
+    activeVoiceMessageId.value = null
+    return
+  }
+  window.speechSynthesis?.cancel()
+
+  try {
+    const response = await fetch(`${baseUrl}/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        engine,
+        voice,
+        speed,
+        output_format: 'wav',
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`TTS 服务返回 ${response.status}`)
+    }
+
+    const audioBlob = await response.blob()
+    const audioUrl = URL.createObjectURL(audioBlob)
+    const audio = new Audio(audioUrl)
+
+    audio.onplay = () => {
+      isPlayingAudio.value = true
+      activeVoiceMessageId.value = messageId
+    }
+
+    audio.onended = () => {
+      isPlayingAudio.value = false
+      activeVoiceMessageId.value = null
+      URL.revokeObjectURL(audioUrl)
+    }
+
+    audio.onerror = () => {
+      console.error('Local TTS playback error')
+      isPlayingAudio.value = false
+      activeVoiceMessageId.value = null
+      URL.revokeObjectURL(audioUrl)
+    }
+
+    await audio.play()
+  } catch (err) {
+    console.error('Local TTS playback failed:', err)
+    isPlayingAudio.value = false
+    activeVoiceMessageId.value = null
+  }
+}
+
+/**
+ * 根据当前配置选择合适的 TTS 播放方式（手动点击喇叭按钮时调用）
+ */
+const handleManualSpeak = (text: string, messageId: string) => {
+  const cfg = configService.getConfig()
+  if (cfg.enableAiPipeline && (cfg.pipelineTtsEngine === 'piper' || cfg.pipelineTtsEngine === 'edge-tts')) {
+    playLocalTtsAudio(text, messageId)
+  } else {
+    speakAudio(text, messageId)
   }
 }
 
@@ -660,6 +737,9 @@ const handleAiPipelineSubmit = async (text: string) => {
       llmModel: config.pipelineLlmModel,
       llmApiKey: apiKey,
       llmBaseUrl: baseUrl,
+      useTts: config.pipelineUseTts ? 'true' : 'false',
+      ttsEngine: config.pipelineTtsEngine,
+      ttsVoice: config.pipelineTtsVoice,
     })
     const streamUrl = `${API_BASE_URL}/api/practice/chat/stream?${params}`
     console.log('[App] Stream request URL:', streamUrl)
@@ -773,6 +853,20 @@ const handleAiPipelineSubmit = async (text: string) => {
           messages.value[msgIndex].text = 'No response received. Please try again.'
         }
       }
+    }
+
+    // 流式响应完成后，自动使用 TTS 朗读 AI 回复
+    if (fullText.trim() && config.pipelineUseTts) {
+      setTimeout(() => {
+        const ttsEngine = config.pipelineTtsEngine
+        // 使用本地 TTS 服务（Piper/Edge-TTS）
+        if (ttsEngine === 'piper' || ttsEngine === 'edge-tts') {
+          playLocalTtsAudio(fullText, aiMsgId)
+        } else {
+          // 使用浏览器原生 SpeechSynthesis 或 OpenAI TTS
+          speakAudio(fullText, aiMsgId)
+        }
+      }, 300)
     }
   } catch (error) {
     console.error('AI Pipeline failed:', error)
@@ -896,7 +990,7 @@ const handleUserAnswerSubmit = async (text: string) => {
     currentQuestionIndex.value = nextIndex
 
     setTimeout(() => {
-      speakAudio(aiResponseText, aiMsg.id)
+      handleManualSpeak(aiResponseText, aiMsg.id)
     }, 400)
 
   }, 2000)
@@ -1335,7 +1429,7 @@ onUnmounted(() => {
                 :active-voice-message-id="activeVoiceMessageId"
                 :current-scenario="currentScenario"
                 :is-thinking="isThinking"
-                @speak="speakAudio"
+                @speak="handleManualSpeak"
                 @toggle-translation="handleToggleTranslation"
               />
             </div>

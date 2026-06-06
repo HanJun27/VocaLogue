@@ -44,6 +44,7 @@ public class AiConfig {
         private String defaultEngine = "openai";
         private TtsProvider openai = new TtsProvider();
         private TtsProvider enjoyai = new TtsProvider();
+        private LocalTtsConfig local = new LocalTtsConfig();
     }
 
     @Data
@@ -52,6 +53,26 @@ public class AiConfig {
         private String baseUrl;
         private String defaultModel;
         private String defaultVoice;
+    }
+
+    @Data
+    public static class LocalTtsConfig {
+        /** 本地 TTS 服务地址（tts-service FastAPI 地址） */
+        private String baseUrl = "http://localhost:8000";
+        /** 默认引擎: piper 或 edge-tts */
+        private String defaultEngine = "piper";
+        /** Piper 默认语音 */
+        private String piperVoice = "en_US-amy-medium";
+        /** Edge TTS 默认语音 */
+        private String edgeVoice = "en-US-AriaNeural";
+        /** 默认语速倍率 (仅 Piper) */
+        private Double piperSpeed = 1.0;
+        /** 默认语速调节 (仅 Edge TTS) */
+        private String edgeRate = "+0%";
+        /** 默认音调 (仅 Edge TTS) */
+        private String edgePitch = "+0Hz";
+        /** 超时时间（毫秒） */
+        private int timeoutMs = 30000;
     }
 
     @Data

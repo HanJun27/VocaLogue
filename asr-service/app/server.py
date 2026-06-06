@@ -7,6 +7,7 @@ from app._convert import _convert_to_pcm
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("AsrServer")
 
+
 class S(asr_service_pb2_grpc.FasterWhisperASRServicer):
     def __init__(self):
         self.engine = None
@@ -22,11 +23,15 @@ class S(asr_service_pb2_grpc.FasterWhisperASRServicer):
         t, sg, cf = self.engine.transcribe_file(a, request.language or None, request.enable_vad)
         d = sg[-1].end_time if sg else 0
         logger.info("done: text='%s' dur=%.2f", t, d)
-        return asr_service_pb2.RecognizeResult(text=t, language=request.language or "auto", duration=d, confidence=cf)
+        return asr_service_pb2.RecognizeResult(
+            text=t, language=request.language or "auto", duration=d, confidence=cf
+        )
 
     def GetStatus(self, request, context):
         return asr_service_pb2.StatusResponse(
-            model_loaded=self.engine.is_loaded if self.engine else False)
+            model_loaded=self.engine.is_loaded if self.engine else False
+        )
+
 
 def serve(port=50051, model_name="medium", device="cpu",
           compute_type="int8_float16", download_root="./models"):
@@ -39,6 +44,7 @@ def serve(port=50051, model_name="medium", device="cpu",
     s.start()
     logger.info("Server started: port=%d model=%s", port, model_name)
     s.wait_for_termination()
+
 
 if __name__ == "__main__":
     import argparse, os

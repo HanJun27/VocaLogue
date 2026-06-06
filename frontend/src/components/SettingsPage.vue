@@ -128,6 +128,16 @@ const resetConfig = () => {
   testResult.value = null;
 };
 
+// 切换 TTS 引擎时的回调
+const onTtsEngineChange = () => {
+  const engine = config.value.pipelineTtsEngine;
+  if (engine === 'piper') {
+    config.value.pipelineTtsVoice = config.value.localTtsPiperVoice;
+  } else if (engine === 'edge-tts') {
+    config.value.pipelineTtsVoice = config.value.localTtsEdgeVoice;
+  }
+};
+
 // 测试 API 连接
 const testConnection = async () => {
   const validationError = validateConfig();
@@ -904,14 +914,17 @@ const testLlmConnection = async () => {
                   <label class="block text-sm font-semibold text-slate-700 mb-2">TTS 引擎</label>
                   <select
                     v-model="config.pipelineTtsEngine"
+                    @change="onTtsEngineChange"
                     class="w-full py-3 px-4 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
                   >
-                    <option value="openai">OpenAI TTS</option>
+                    <option value="openai">OpenAI TTS (云端)</option>
                     <option value="enjoyai">EnjoyAI (Azure 代理)</option>
+                    <option value="piper">Piper TTS (本地离线) ⭐</option>
+                    <option value="edge-tts">Edge TTS (免费在线)</option>
                   </select>
                 </div>
 
-                <div>
+                <div v-if="config.pipelineTtsEngine === 'openai' || config.pipelineTtsEngine === 'enjoyai'">
                   <label class="block text-sm font-semibold text-slate-700 mb-2">TTS 声音</label>
                   <select
                     v-model="config.pipelineTtsVoice"
@@ -925,6 +938,70 @@ const testLlmConnection = async () => {
                     <option value="shimmer">Shimmer (女性柔和)</option>
                   </select>
                 </div>
+
+                <!-- Piper TTS 设置 -->
+                <template v-if="config.pipelineTtsEngine === 'piper'">
+                  <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Piper 语音</label>
+                    <select
+                      v-model="config.localTtsPiperVoice"
+                      class="w-full py-3 px-4 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
+                    >
+                      <option value="en_US-amy-medium">Amy (美式, 女声)</option>
+                      <option value="en_US-lessac-medium">Lessac (美式, 女声)</option>
+                      <option value="en_US-ryan-medium">Ryan (美式, 男声)</option>
+                      <option value="en_GB-alan-medium">Alan (英式, 男声)</option>
+                      <option value="en_GB-semaine-medium">Semaine (英式, 女声)</option>
+                      <option value="zh_CN-huayan-medium">花颜 (中文, 女声)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">
+                      语速: {{ config.localTtsPiperSpeed }}x
+                    </label>
+                    <input
+                      v-model.number="config.localTtsPiperSpeed"
+                      type="range"
+                      min="0.5"
+                      max="2.0"
+                      step="0.1"
+                      class="w-full"
+                    />
+                  </div>
+                </template>
+
+                <!-- Edge TTS 设置 -->
+                <template v-if="config.pipelineTtsEngine === 'edge-tts'">
+                  <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Edge TTS 语音</label>
+                    <select
+                      v-model="config.localTtsEdgeVoice"
+                      class="w-full py-3 px-4 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
+                    >
+                      <option value="en-US-AriaNeural">Aria (美式, 女声)</option>
+                      <option value="en-US-JennyNeural">Jenny (美式, 女声)</option>
+                      <option value="en-US-GuyNeural">Guy (美式, 男声)</option>
+                      <option value="en-US-DavisNeural">Davis (美式, 男声)</option>
+                      <option value="en-GB-SoniaNeural">Sonia (英式, 女声)</option>
+                      <option value="en-GB-RyanNeural">Ryan (英式, 男声)</option>
+                      <option value="zh-CN-XiaoxiaoNeural">晓晓 (中文, 女声)</option>
+                    </select>
+                  </div>
+                </template>
+              </div>
+
+              <!-- 本地 TTS 服务地址 -->
+              <div class="mt-3">
+                <label class="block text-sm font-semibold text-slate-700 mb-2">本地 TTS 服务地址</label>
+                <input
+                  v-model="config.localTtsBaseUrl"
+                  type="text"
+                  placeholder="http://localhost:8000"
+                  class="w-full py-3 px-4 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 text-sm"
+                />
+                <p class="text-xs text-slate-400 mt-1">
+                  tts-service 的 FastAPI 地址。使用本地 TTS 引擎（Piper/Edge-TTS）时需配置此项。Docker 部署时使用 http://tts-service:8000
+                </p>
               </div>
             </template>
           </div>

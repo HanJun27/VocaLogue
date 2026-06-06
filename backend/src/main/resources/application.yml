@@ -85,7 +85,7 @@ ai:
 
   # TTS 配置 (from enjoy-app TTS_PROVIDERS)
   tts:
-    default-engine: openai       # openai | enjoyai
+    default-engine: piper          # openai | enjoyai | piper | edge-tts
     openai:
       api-key: ${OPENAI_API_KEY:sk-your-key}
       base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
@@ -96,6 +96,16 @@ ai:
       base-url: ${ENJOYAI_BASE_URL:}
       default-model: openai/tts-1
       default-voice: alloy
+    # 本地 TTS (Piper TTS + Edge TTS)
+    local:
+      base-url: ${TTS_SERVICE_URL:http://localhost:8000}
+      default-engine: piper        # piper | edge-tts
+      piper-voice: en_US-amy-medium
+      piper-speed: 1.0
+      edge-voice: en-US-AriaNeural
+      edge-rate: "+0%"
+      edge-pitch: "+0Hz"
+      timeout-ms: 30000
   # Azure 语音 (from enjoy-app azure-speech-sdk.ts)
   azure:
     speech-key: ${AZURE_SPEECH_KEY:}
