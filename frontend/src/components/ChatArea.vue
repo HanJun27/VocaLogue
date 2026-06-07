@@ -37,7 +37,7 @@ watch(
     </div>
 
     <template v-for="message in messages" :key="message.id">
-      <div v-if="message.role === 'ai'" class="flex w-full mt-4 space-x-3 max-w-3xl self-start">
+      <div v-if="message.role === 'ai' || message.role === 'assistant'" class="flex w-full mt-4 space-x-3 max-w-3xl self-start">
         <div class="flex-shrink-0 w-10 h-10 rounded-full bg-[#d9e3f6] flex items-center justify-center border border-[#bdc9c5]/20 shadow-sm overflow-hidden select-none">
           <img
             alt="AI Avatar"

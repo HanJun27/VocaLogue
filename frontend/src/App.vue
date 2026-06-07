@@ -194,7 +194,7 @@ const loadHistoricalMessages = async (sessionId: string) => {
     // 转换为 DialectMessage 格式
     const historicalMessages: DialectMessage[] = messageList.map(msg => ({
       id: msg.id,
-      role: msg.role as 'ai' | 'user',
+      role: msg.role === 'assistant' ? 'ai' : (msg.role as 'ai' | 'user'),
       text: msg.text,
       translation: msg.translation,
       timestamp: msg.timestamp,
@@ -1207,6 +1207,18 @@ const handlePipelineWsSubmit = async (text: string) => {
   }
   messages.value = [...messages.value, userMsg]
 
+  // 持久化：保存用户消息到后端数据库
+  if (USE_API_MODE.value && currentSessionId.value) {
+    api.saveMessage(
+      currentSessionId.value,
+      text,
+      false,
+      undefined,
+      undefined,
+      'user'
+    ).catch(err => console.error('[Pipeline] 保存用户消息失败:', err))
+  }
+
   // AI 正在思考
   isThinking.value = true
 
@@ -1578,6 +1590,18 @@ const handleUserAnswerSubmit = async (text: string) => {
     messages.value = [...messages.value, aiMsg]
     currentQuestionIndex.value = nextIndex
 
+    // 持久化：保存 AI 回复（基本文本模式）
+    if (USE_API_MODE.value && currentSessionId.value) {
+      api.saveMessage(
+        currentSessionId.value,
+        aiResponseText,
+        false,
+        undefined,
+        undefined,
+        'assistant'
+      ).catch(err => console.error('保存AI消息失败:', err))
+    }
+
     setTimeout(() => {
       handleManualSpeak(aiResponseText, aiMsg.id)
     }, 400)
@@ -1683,6 +1707,11 @@ const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary' | 'se
 
     // 先切换视图
     currentView.value = view
+
+    // 切换到历史记录视图时刷新列表
+    if (view === 'history') {
+      await loadConversations()
+    }
 
     // 切换到练习视图
     if (view === 'practice') {
@@ -1921,6 +1950,18 @@ function setupPipelineEventHandlers() {
         }
         currentStreamMsgId = null
         isThinking.value = false
+
+        // 持久化：保存 AI 回复到后端数据库
+        if (USE_API_MODE.value && currentSessionId.value && event.text) {
+          api.saveMessage(
+            currentSessionId.value,
+            event.text,
+            false,
+            undefined,
+            undefined,
+            'assistant'
+          ).catch(err => console.error('[Pipeline] 保存AI消息失败:', err))
+        }
       } else if (!event.final && event.text) {
         // LLM token — 追加到流式消息（打字机效果）
         if (currentStreamMsgId) {
@@ -2145,7 +2186,7 @@ function buildConversationHistory(): Array<{role: string; content: string}> {
   for (const msg of messages.value) {
     if (msg.role === 'user') {
       history.push({ role: 'user', content: msg.text })
-    } else if (msg.role === 'ai') {
+    } else if (msg.role === 'ai' || msg.role === 'assistant') {
       history.push({ role: 'assistant', content: msg.text })
     }
   }
