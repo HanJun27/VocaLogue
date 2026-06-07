@@ -608,6 +608,17 @@ function checkRealtimeVad(): void {
  *  4. VAD 检测静音 → 自动 ASR → LLM → 继续录音
  */
 async function startRealtimeConversation(): Promise<void> {
+  // 同步 ASR GPU 设置到后端
+  try {
+    const cfg = configService.getConfig()
+    await api.updateAsrSettings({
+      device: cfg.asrGpuEnabled ? 'cuda' : 'cpu',
+    })
+    console.log('[Realtime] ASR 设备已应用:', cfg.asrGpuEnabled ? 'cuda' : 'cpu')
+  } catch (e) {
+    console.warn('[Realtime] ASR 设置同步失败（使用当前设备）:', e)
+  }
+
   // 确保管线 WS 已连接
   if (!pipelineWsConnected.value) {
     await connectPipelineWebSocket()

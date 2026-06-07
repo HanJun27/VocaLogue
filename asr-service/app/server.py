@@ -1,4 +1,4 @@
-import logging, grpc, numpy as np, time
+import logging, grpc, numpy as np, time, os
 from concurrent import futures
 from app.proto import asr_service_pb2, asr_service_pb2_grpc
 from app.engine import WhisperEngine
@@ -30,9 +30,47 @@ class S(asr_service_pb2_grpc.FasterWhisperASRServicer):
         )
 
     def GetStatus(self, request, context):
+        loaded = self.engine.is_loaded if self.engine else False
+        device = self.engine.device if self.engine else "unknown"
         return asr_service_pb2.StatusResponse(
-            model_loaded=self.engine.is_loaded if self.engine else False
+            model_loaded=loaded,
+            current_model=self.engine.model_name if self.engine else "",
+            gpu_available=(device == "cuda"),
+            device=device,
         )
+
+    def UpdateSettings(self, request, context):
+        """
+        运行时更新 ASR 设置（模型、设备、VAD 等）
+        会重新加载模型到新设备，耗时 5-60 秒
+        """
+        model_name = request.model_name or "large-v2"
+        device = request.device or "cpu"
+        compute_type = ["int8", "float16", "int8_float16", "float32"][request.compute_type] if request.compute_type <= 3 else "int8_float16"
+        download_root = os.environ.get("ASR_DOWNLOAD_ROOT", "./models")
+
+        logger.info("UpdateSettings: model=%s device=%s compute_type=%s vad=%s",
+                     model_name, device, compute_type, request.enable_vad)
+
+        try:
+            WhisperEngine.create_instance(model_name, device, compute_type, download_root)
+            self.engine = WhisperEngine.get_instance()
+            loaded = self.engine.is_loaded if self.engine else False
+            logger.info("UpdateSettings 完成: model_loaded=%s device=%s", loaded, device)
+            return asr_service_pb2.StatusResponse(
+                model_loaded=loaded,
+                current_model=model_name,
+                gpu_available=(device == "cuda"),
+                device=device,
+                message=f"Settings updated: model={model_name}, device={device}",
+            )
+        except Exception as e:
+            logger.error("UpdateSettings 失败: %s", e)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return asr_service_pb2.StatusResponse(
+                model_loaded=False, message=f"Failed: {e}"
+            )
 
     # ==================== 流式识别（新增） ====================
 

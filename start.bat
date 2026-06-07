@@ -42,7 +42,8 @@ docker compose -f "%ROOT%docker-compose.yml" up -d postgres redis
 echo   [OK] PostgreSQL + Redis
 
 echo [2/4] Starting ASR Service (Faster-Whisper) on gRPC:50051...
-start "LingoAI ASR" cmd /k "cd /d "%ROOT%asr-service" && python -m app.server --device cpu --model medium --compute-type int8 --download-root ./models"
+if "%ASR_DEVICE%"=="" set "ASR_DEVICE=cpu"
+start "LingoAI ASR" cmd /k "cd /d "%ROOT%asr-service" && python -m app.server --device %ASR_DEVICE% --model medium --compute-type int8 --download-root ./models"
 echo   [OK] ASR port 50051
 
 echo [3/4] Starting TTS Service (Piper) on port 8001...
