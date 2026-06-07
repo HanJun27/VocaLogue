@@ -150,9 +150,12 @@ public class ConversationPipelineService {
 
         log.info("LLM response: {}", aiResponse.length() > 100 ? aiResponse.substring(0, 100) + "..." : aiResponse);
 
+        // 清洗特殊字符（* 等会被 TTS 朗读为 "star"）
+        String cleanResponse = aiResponse != null ? aiResponse.replace("*", "") : aiResponse;
+
         // ========== Phase 3: TTS 处理 ==========
         String ttsUrl = null;
-        if (config.isUseTts() && aiResponse != null && !aiResponse.isEmpty()) {
+        if (config.isUseTts() && cleanResponse != null && !cleanResponse.isEmpty()) {
             try {
                 String ttsEngine = config.getTtsEngine() != null ? config.getTtsEngine()
                         : (agent != null ? agent.getTtsEngine() : "openai");
@@ -162,7 +165,7 @@ public class ConversationPipelineService {
                         : (agent != null ? agent.getTtsVoice() : "alloy");
 
                 TtsService.TtsResult ttsResult = ttsService.generateSpeech(
-                        aiResponse, ttsEngine, ttsModel, ttsVoice, null, null);
+                        cleanResponse, ttsEngine, ttsModel, ttsVoice, null, null);
                 ttsUrl = "/api/audio/tts/" + ttsResult.getFilename();
                 log.info("TTS generated: {}", ttsUrl);
             } catch (Exception e) {
@@ -173,7 +176,7 @@ public class ConversationPipelineService {
         // ========== 构建结果 ==========
         return PipelineResult.builder()
                 .userText(userText)
-                .aiResponseText(aiResponse)
+                .aiResponseText(cleanResponse)
                 .ttsUrl(ttsUrl)
                 .agentName(agent != null ? agent.getName() : config.getAgentName())
                 .agentDescription(agent != null ? agent.getDescription() : "")

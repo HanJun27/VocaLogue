@@ -349,6 +349,9 @@ public class SessionCoordinator {
             }
         }
 
+        // 清洗特殊字符（* 等会被 TTS 朗读为 "star"）
+        content = content.replace("*", "");
+
         llmAccumulator.append(content);
         ttsBuffer.append(content);
 
