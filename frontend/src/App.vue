@@ -1415,16 +1415,28 @@ const handleAiPipelineSubmit = async (text: string) => {
       }
     }
 
+    // 拆分英文和中文翻译（LLM 按要求返回的 "英文|||中文" 格式）
+    const { text: cleanText, translation } = splitTextAndTranslation(fullText)
+    if (translation) {
+      // 更新消息，拆分为 text 和 translation
+      const msgIdx = messages.value.findIndex(m => m.id === aiMsgId)
+      if (msgIdx !== -1) {
+        messages.value[msgIdx].text = cleanText
+        messages.value[msgIdx].translation = translation
+        messages.value = [...messages.value]
+      }
+    }
+
     // 流式响应完成后，自动使用 TTS 朗读 AI 回复
-    if (fullText.trim() && config.pipelineUseTts) {
+    if (cleanText.trim() && config.pipelineUseTts) {
       setTimeout(() => {
         const ttsEngine = config.pipelineTtsEngine
         // 使用本地 TTS 服务（Piper/Edge-TTS）
         if (ttsEngine === 'piper' || ttsEngine === 'edge-tts') {
-          playLocalTtsAudio(fullText, aiMsgId)
+          playLocalTtsAudio(cleanText, aiMsgId)
         } else {
           // 使用浏览器原生 SpeechSynthesis 或 OpenAI TTS
-          speakAudio(fullText, aiMsgId)
+          speakAudio(cleanText, aiMsgId)
         }
       }, 300)
     }
@@ -1924,6 +1936,8 @@ function setupPipelineEventHandlers() {
     if (event.role === 'ai') {
       if (event.final && event.text) {
         if (event.text === '[已打断]') return
+        // 拆分英文和中文翻译
+        const { text: cleanText, translation } = splitTextAndTranslation(event.text)
         // LLM 完成 — 更新或替换流式消息为最终消息
         const minutesAdded = messages.value.length + 1
         const timeString = `10:${minutesAdded < 10 ? '0' + minutesAdded : minutesAdded}`
@@ -1936,7 +1950,8 @@ function setupPipelineEventHandlers() {
           updated[streamIndex] = {
             ...updated[streamIndex],
             id: 'ai_' + Date.now(),
-            text: event.text,
+            text: cleanText,
+            translation: translation,
             showTranslation: subtitlesOn.value,
           }
           messages.value = updated
@@ -1945,7 +1960,8 @@ function setupPipelineEventHandlers() {
           messages.value = [...messages.value, {
             id: 'ai_' + Date.now(),
             role: 'ai',
-            text: event.text,
+            text: cleanText,
+            translation: translation,
             timestamp: timeString,
             showTranslation: subtitlesOn.value,
           }]
@@ -2193,6 +2209,21 @@ function buildConversationHistory(): Array<{role: string; content: string}> {
     }
   }
   return history
+}
+
+/**
+ * 拆分 LLM 返回的"英文|||中文"格式文本
+ * 如果 LLM 遵循了提示词要求，返回 { text, translation }
+ * 否则返回 { text, translation: undefined }
+ */
+function splitTextAndTranslation(raw: string): { text: string; translation?: string } {
+  const idx = raw.indexOf('|||')
+  if (idx !== -1) {
+    const text = raw.substring(0, idx).trim()
+    const translation = raw.substring(idx + 3).trim()
+    return { text, translation: translation || undefined }
+  }
+  return { text: raw }
 }
 
 /**
