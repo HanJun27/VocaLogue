@@ -10,6 +10,7 @@ Docker 部署:
 """
 
 import io
+import json
 import logging
 import os
 import time
@@ -24,6 +25,9 @@ from pydantic import BaseModel, Field
 from .piper_engine import PiperEngine
 from .edge_engine import EdgeTTSEngine
 from .voices import PIPER_VOICES, EDGE_TTS_VOICES
+from fastapi.exceptions import RequestValidationError
+from starlette.requests import Request
+from starlette.responses import Response
 
 # ---------------------------------------------------------------------------
 # 日志
@@ -62,6 +66,26 @@ piper = PiperEngine(models_dir=models_dir)
 edge = EdgeTTSEngine()
 
 _startup_time = time.time()
+
+# ---------------------------------------------------------------------------
+# 调试 — 捕获 422 请求体
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    logger.error("=== 422 Validation Error ===")
+    logger.error("URL: %s", request.url)
+    logger.error("Headers: %s", dict(request.headers))
+    logger.error("Raw body: %s", body.decode("utf-8", errors="replace"))
+    logger.error("Errors: %s", exc.errors())
+    return Response(
+        content=json.dumps(exc.errors()),
+        status_code=422,
+        media_type="application/json",
+    )
+
 
 # ---------------------------------------------------------------------------
 # 请求/响应模型

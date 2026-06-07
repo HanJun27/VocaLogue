@@ -11,7 +11,7 @@ import ConversationSidebar from '@/components/ConversationSidebar.vue'
 import ConversationHistory from '@/components/ConversationHistory.vue'
 import PracticeModeModal from '@/components/PracticeModeModal.vue'
 import { SCENARIOS, MOCK_RATING_DATABASE } from '@/scenariosData'
-import type { DialectMessage, Scenario, PronunciationScore, GrammarFeedback, ConversationSummary } from '@/types'
+import type { DialectMessage, Scenario, PronunciationScore, GrammarFeedback, ConversationSummary, PracticeSummaryResult } from '@/types'
 import { Award, AlertCircle } from 'lucide-vue-next'
 import api, { API_BASE_URL, getHeaders } from '@/api'
 import { 
@@ -72,7 +72,11 @@ const isTypingMode = ref(false)
 
 const ratingOpen = ref(false)
 const currentRating = ref<PronunciationScore | null>(null)
+/** LLM 生成的详细练习总结（后端 EvaluationService 返回） */
+const currentSummaryResult = ref<PracticeSummaryResult | null>(null)
 const isThinking = ref(false)
+/** 是否正在结束对话（生成总结） */
+const isEndingConversation = ref(false)
 
 const isRecording = ref(false)
 const currentTranscript = ref('')
@@ -124,6 +128,49 @@ const loadConversations = async () => {
   } finally {
     conversationsLoading.value = false
   }
+}
+
+/**
+ * 从 configService 解析当前 LLM 引擎的完整配置（API Key、Base URL、Engine、Model）
+ * 供创建会话等需要向后端传递 LLM 配置的场景使用
+ */
+function resolveLlmPipelineConfig(): {
+  llmEngine: string
+  llmModel: string
+  llmApiKey: string
+  llmBaseUrl: string
+} {
+  const config = configService.getConfig()
+  const llmEngine = config.pipelineLlmEngine || 'openai'
+  const llmModel = config.pipelineLlmModel || ''
+  let llmApiKey = ''
+  let llmBaseUrl = ''
+
+  switch (llmEngine) {
+    case 'deepseek':
+      llmApiKey = config.deepseekApiKey || ''
+      llmBaseUrl = 'https://api.deepseek.com/v1'
+      break
+    case 'glm':
+      llmApiKey = config.glmApiKey || ''
+      llmBaseUrl = config.glmApiUrl || 'https://open.bigmodel.cn/api/paas/v4'
+      break
+    case 'qianwen':
+      llmApiKey = config.qianwenApiKey || ''
+      llmBaseUrl = config.qianwenApiUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+      break
+    case 'doubao':
+      llmApiKey = config.apiKey || ''
+      llmBaseUrl = 'https://api.doubao.com/v1'
+      break
+    case 'openai':
+    default:
+      llmApiKey = config.apiKey || ''
+      llmBaseUrl = 'https://api.openai.com/v1'
+      break
+  }
+
+  return { llmEngine, llmModel, llmApiKey, llmBaseUrl }
 }
 
 /**
@@ -207,14 +254,29 @@ const handleEndConversation = async () => {
     return
   }
   
+  isEndingConversation.value = true
+  currentSummaryResult.value = null
+  
   try {
-    await api.endConversation(currentSessionId.value)
+    // 获取当前用户设置的 LLM 配置，传给后端覆盖 Redis 配置
+    const llmConfig = resolveLlmPipelineConfig()
+    // 结束会话 — 后端会调用 LLM 评测（超时时自动回退到规则引擎），直接返回总结
+    const summary = await api.endConversation(currentSessionId.value, {
+      llmEngine: llmConfig.llmEngine,
+      llmModel: llmConfig.llmModel,
+      llmApiKey: llmConfig.llmApiKey,
+      llmBaseUrl: llmConfig.llmBaseUrl,
+    })
+    currentSummaryResult.value = summary
+    
     await loadConversations()
     // 跳转到总结页面
     currentView.value = 'summary'
   } catch (error) {
     console.error('结束对话失败:', error)
-    alert('结束对话失败，请重试')
+    alert('结束对话失败：' + (error instanceof Error ? error.message : '未知错误'))
+  } finally {
+    isEndingConversation.value = false
   }
 }
 
@@ -1455,6 +1517,7 @@ const handleUserAnswerSubmit = async (text: string) => {
       aiTranslationText = "恭喜你！你完成了我们今天练习场景中的所有对话节点。我已经全面评估整理了你的流利度与语篇时态细节，让我们立即为您生成课后总结分析和行动计划！"
 
       setTimeout(() => {
+        currentSummaryResult.value = null // mock 模式无 LLM 评估
         currentView.value = 'summary'
       }, 2200)
     } else {
@@ -1552,7 +1615,19 @@ const handlePracticeModeSelect = async (mode: 'pipeline' | 'realtime') => {
   // 创建后端会话
   if (USE_API_MODE.value) {
     try {
-      const conversation = await api.createConversation(currentScenario.value.id)
+      const llmConfig = resolveLlmPipelineConfig()
+      const conversation = await api.createConversation(currentScenario.value.id, undefined, {
+        useAsr: false,
+        useTts: false,
+        llmEngine: llmConfig.llmEngine,
+        llmModel: llmConfig.llmModel,
+        llmApiKey: llmConfig.llmApiKey,
+        llmBaseUrl: llmConfig.llmBaseUrl,
+        llmTemperature: 0.7,
+        ttsEngine: 'openai',
+        ttsModel: 'tts-1',
+        ttsVoice: 'alloy'
+      })
       currentSessionId.value = conversation.sessionId
     } catch (error) {
       console.error('创建会话失败:', error)
@@ -1589,7 +1664,19 @@ const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary' | 'se
       // 创建后端会话
       if (USE_API_MODE.value) {
         try {
-          const conversation = await api.createConversation(currentScenario.value.id)
+          const llmConfig = resolveLlmPipelineConfig()
+          const conversation = await api.createConversation(currentScenario.value.id, undefined, {
+            useAsr: false,
+            useTts: false,
+            llmEngine: llmConfig.llmEngine,
+            llmModel: llmConfig.llmModel,
+            llmApiKey: llmConfig.llmApiKey,
+            llmBaseUrl: llmConfig.llmBaseUrl,
+            llmTemperature: 0.7,
+            ttsEngine: 'openai',
+            ttsModel: 'tts-1',
+            ttsVoice: 'alloy'
+          })
           currentSessionId.value = conversation.sessionId
           console.log('创建会话成功:', conversation.sessionId)
         } catch (error) {
@@ -2220,9 +2307,15 @@ onUnmounted(() => {
                 </button>
                 <button
                   @click="handleEndConversation"
-                  class="text-[10px] font-bold text-white hover:opacity-90 flex items-center gap-1 bg-[#006053] px-3 py-1 rounded-lg transition-colors cursor-pointer shadow-sm"
+                  :disabled="isEndingConversation"
+                  class="text-[10px] font-bold text-white flex items-center gap-1 bg-[#006053] px-3 py-1 rounded-lg transition-colors shadow-sm"
+                  :class="isEndingConversation ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-90 cursor-pointer'"
                 >
-                  完成对话
+                  <svg v-if="isEndingConversation" class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span>{{ isEndingConversation ? '正在生成总结...' : '完成对话' }}</span>
                 </button>
               </div>
             </div>
@@ -2278,6 +2371,7 @@ onUnmounted(() => {
           grammar: 82,
           feedbackSummary: '您的整体语调和发音十分标准，语音节奏富有条理，能够生动传达关键意思。仅在局部高级词藻挑选及过去时复现上有少量微调空间。'
         }"
+        :summary-result="currentSummaryResult"
         :messages="messages"
         @restart-practice="() => { resetConversationForScenario(currentScenario); currentView = 'practice' }"
         @go-back-to-scenarios="handleViewChange('scenarios')"

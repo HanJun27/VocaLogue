@@ -112,4 +112,17 @@ public class AiConfig {
         private String language = "";
         private String downloadRoot = "./models";
     }
+
+    /** 发音评测服务配置 (wav2vec2 Python 微服务) */
+    private PronunciationConfig pronunciation = new PronunciationConfig();
+
+    @Data
+    public static class PronunciationConfig {
+        /** Python 评测服务地址 */
+        private String baseUrl = "http://localhost:8002";
+        /** 请求超时（毫秒） */
+        private int timeoutMs = 30000;
+        /** 默认语言 */
+        private String defaultLanguage = "en";
+    }
 }

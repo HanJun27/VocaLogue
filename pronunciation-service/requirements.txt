@@ -1,0 +1,10 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+torch>=2.2.0
+torchaudio>=2.2.0
+torchaudio
+soundfile>=0.12.1
+transformers>=4.39.0
+phonemizer>=3.2.1
+numpy>=1.26.0
+python-multipart>=0.0.9

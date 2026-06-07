@@ -1,4 +1,4 @@
-import type { Scenario, PronunciationScore, GrammarFeedback, AiChatResponse, AgentInfo, PipelineConfig, ConversationSummary } from './types'
+import type { Scenario, PronunciationScore, GrammarFeedback, AiChatResponse, AgentInfo, PipelineConfig, ConversationSummary, PracticeSummaryResult, PronunciationResult } from './types'
 
 // API 基础配置
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -87,11 +87,16 @@ export const api = {
   /**
    * 创建新会话
    */
-  async createConversation(scenarioId: string, userId?: string): Promise<ConversationResponse> {
+  async createConversation(scenarioId: string, userId?: string, pipelineConfig?: Partial<PipelineConfig>): Promise<ConversationResponse> {
+    const body: any = { scenarioId, userId };
+    if (pipelineConfig) {
+      body.useAiPractice = true;
+      body.pipelineConfig = pipelineConfig;
+    }
     const response = await fetch(`${API_BASE_URL}/api/conversations`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ scenarioId, userId }),
+      body: JSON.stringify(body),
     })
     const result: ApiResponse<ConversationResponse> = await response.json()
     if (result.code !== 200) {
@@ -158,17 +163,34 @@ export const api = {
   },
 
   /**
-   * 结束会话（生成总结，不是删除）
+   * 结束会话（生成总结，直接返回练习总结）
+   * 可选的 llmConfig 参数用于覆盖从 Redis 读取的管线配置
    */
-  async endConversation(sessionId: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/conversations/${sessionId}`, {
+  async endConversation(sessionId: string, llmConfig?: {
+    llmEngine?: string
+    llmModel?: string
+    llmApiKey?: string
+    llmBaseUrl?: string
+  }): Promise<PracticeSummaryResult> {
+    let url = `${API_BASE_URL}/api/conversations/${sessionId}`
+    if (llmConfig) {
+      const params = new URLSearchParams()
+      if (llmConfig.llmEngine) params.set('llmEngine', llmConfig.llmEngine)
+      if (llmConfig.llmModel) params.set('llmModel', llmConfig.llmModel)
+      if (llmConfig.llmApiKey) params.set('llmApiKey', llmConfig.llmApiKey)
+      if (llmConfig.llmBaseUrl) params.set('llmBaseUrl', llmConfig.llmBaseUrl)
+      const qs = params.toString()
+      if (qs) url += '?' + qs
+    }
+    const response = await fetch(url, {
       method: 'DELETE',
       headers: getHeaders(),
     })
-    const result: ApiResponse<null> = await response.json()
+    const result: ApiResponse<PracticeSummaryResult> = await response.json()
     if (result.code !== 200) {
       throw new Error(result.message)
     }
+    return result.data
   },
 
   /**
@@ -194,25 +216,6 @@ export const api = {
     })
     const result: ApiResponse<null> = await response.json()
     if (result.code !== 200) throw new Error(result.message)
-  },
-
-  /**
-   * 发音评测
-   */
-  async evaluatePronunciation(
-    audioBase64: string,
-    referenceText: string
-  ): Promise<PronunciationScore> {
-    const response = await fetch(`${API_BASE_URL}/api/pronunciation/evaluate`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ audioBase64, referenceText }),
-    })
-    const result: ApiResponse<PronunciationScore> = await response.json()
-    if (result.code !== 200) {
-      throw new Error(result.message)
-    }
-    return result.data
   },
 
   // ====== ASR→LLM→TTS 管线 API (来自 everyone-can-use-english) ======
@@ -386,6 +389,25 @@ export const api = {
   },
 
   /**
+   * 获取练习总结（含 LLM 五维评分、详细评价、语法纠正和建议）
+   * GET /api/conversations/{sessionId}/summary
+   */
+  async getConversationSummary(
+    sessionId: string
+  ): Promise<PracticeSummaryResult> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/conversations/${sessionId}/summary`,
+      {
+        method: 'GET',
+        headers: getHeaders(),
+      }
+    )
+    const result: ApiResponse<PracticeSummaryResult> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
+    return result.data
+  },
+
+  /**
    * 测试 LLM 引擎连接
    * POST /api/practice/test-llm
    */
@@ -401,6 +423,30 @@ export const api = {
       body: JSON.stringify(params),
     })
     const result: ApiResponse<{ success: boolean; message: string }> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
+    return result.data
+  },
+
+  /**
+   * 发音评测 — 上传录音到 wav2vec2 微服务
+   * POST /api/pronunciation/evaluate
+   */
+  async evaluatePronunciation(
+    audioBlob: Blob,
+    referenceText: string,
+    language: string = 'en'
+  ): Promise<PronunciationResult> {
+    const formData = new FormData()
+    formData.append('file', audioBlob, 'recording.wav')
+    formData.append('reference_text', referenceText)
+    formData.append('language', language)
+
+    const response = await fetch(`${API_BASE_URL}/api/pronunciation/evaluate`, {
+      method: 'POST',
+      headers: { 'Authorization': getHeaders()['Authorization'] || '' },
+      body: formData,
+    })
+    const result: ApiResponse<PronunciationResult> = await response.json()
     if (result.code !== 200) throw new Error(result.message)
     return result.data
   },

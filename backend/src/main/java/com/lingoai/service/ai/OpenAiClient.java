@@ -39,7 +39,8 @@ public class OpenAiClient {
     public OpenAiClient(AiConfig aiConfig) {
         this.aiConfig = aiConfig;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10))
                 .build();
         this.objectMapper = new ObjectMapper();
     }

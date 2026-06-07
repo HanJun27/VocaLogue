@@ -120,3 +120,60 @@ export interface AiChatResponse {
     ttsVoice: string;
   };
 }
+
+// ====== LLM 评测总结相关类型 (由 EvaluationService 生成) ======
+
+/** 单个维度的评分 + 详细文本评价 */
+export interface DimensionDetail {
+  score: number;
+  evaluation: string;
+}
+
+/** 五维能力评估 */
+export interface PracticeDimensions {
+  pronunciation: DimensionDetail;
+  grammar: DimensionDetail;
+  fluency: DimensionDetail;
+  vocabulary: DimensionDetail;
+  interactivity: DimensionDetail;
+}
+
+/** 语法/表达错误纠正条目 */
+export interface PracticeErrorItem {
+  original: string;
+  corrected: string;
+  type: string;
+}
+
+/** 行动力提升建议 */
+export interface PracticeSuggestion {
+  title: string;
+  description: string;
+}
+
+/** 练习总结（匹配后端 PracticeSummaryDTO） */
+export interface PracticeSummaryResult {
+  overallScore: number;
+  dimensions: PracticeDimensions;
+  errors: PracticeErrorItem[];
+  suggestions: PracticeSuggestion[];
+}
+
+// ====== 发音评测相关类型 (wav2vec2 Python 微服务返回) ======
+
+/** 词级发音评分 */
+export interface WordPronunciationScore {
+  word: string;
+  accuracy_score: number;
+  expected_phonemes: string;
+  phoneme_scores: number[];
+}
+
+/** 发音评测结果（wav2vec2 Python 微服务返回） */
+export interface PronunciationResult {
+  accuracy_score: number;
+  fluency_score: number;
+  completeness_score: number;
+  overall_pronunciation_score: number;
+  word_scores: WordPronunciationScore[];
+}

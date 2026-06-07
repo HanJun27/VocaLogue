@@ -32,7 +32,28 @@ public interface ConversationService {
 
     PracticeSummaryDTO getSummary(String sessionId);
 
-    void endConversation(String sessionId);
+    /**
+     * 生成练习总结（支持前端传入 LLM 配置覆盖 Redis 值）
+     */
+    PracticeSummaryDTO getSummary(String sessionId,
+                                  String llmEngine,
+                                  String llmModel,
+                                  String llmApiKey,
+                                  String llmBaseUrl);
+
+    /**
+     * 结束会话并返回生成的练习总结
+     */
+    PracticeSummaryDTO endConversation(String sessionId);
+
+    /**
+     * 结束会话并返回生成的练习总结（支持前端传入 LLM 配置）
+     */
+    PracticeSummaryDTO endConversation(String sessionId,
+                                       String llmEngine,
+                                       String llmModel,
+                                       String llmApiKey,
+                                       String llmBaseUrl);
 
     /**
      * 获取用户的会话列表（按时间倒序）

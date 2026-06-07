@@ -84,9 +84,14 @@ public class ConversationController {
 
     @GetMapping("/{sessionId}/summary")
     public ResponseEntity<ApiResponse<PracticeSummaryDTO>> getSummary(
-            @PathVariable String sessionId) {
+            @PathVariable String sessionId,
+            @RequestParam(required = false) String llmEngine,
+            @RequestParam(required = false) String llmModel,
+            @RequestParam(required = false) String llmApiKey,
+            @RequestParam(required = false) String llmBaseUrl) {
         log.info("获取练习总结: sessionId={}", sessionId);
-        PracticeSummaryDTO summary = conversationService.getSummary(sessionId);
+        PracticeSummaryDTO summary = conversationService.getSummary(
+                sessionId, llmEngine, llmModel, llmApiKey, llmBaseUrl);
         return ResponseEntity.ok(ApiResponse.success(summary));
     }
 
@@ -103,10 +108,16 @@ public class ConversationController {
     }
 
     @DeleteMapping("/{sessionId}")
-    public ResponseEntity<ApiResponse<Void>> endConversation(@PathVariable String sessionId) {
+    public ResponseEntity<ApiResponse<PracticeSummaryDTO>> endConversation(
+            @PathVariable String sessionId,
+            @RequestParam(required = false) String llmEngine,
+            @RequestParam(required = false) String llmModel,
+            @RequestParam(required = false) String llmApiKey,
+            @RequestParam(required = false) String llmBaseUrl) {
         log.info("结束会话: sessionId={}", sessionId);
-        conversationService.endConversation(sessionId);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        PracticeSummaryDTO summary = conversationService.endConversation(sessionId,
+                llmEngine, llmModel, llmApiKey, llmBaseUrl);
+        return ResponseEntity.ok(ApiResponse.success(summary));
     }
 
     /**

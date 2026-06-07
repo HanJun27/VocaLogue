@@ -35,6 +35,7 @@ public class LocalTtsClient {
     public LocalTtsClient(AiConfig aiConfig) {
         this.config = aiConfig.getTts().getLocal();
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(java.time.Duration.ofMillis(config.getTimeoutMs()))
                 .build();
         log.info("LocalTTS 客户端初始化: baseUrl='{}'", config.getBaseUrl());
