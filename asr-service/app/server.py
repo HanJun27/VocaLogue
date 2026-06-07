@@ -70,27 +70,24 @@ class S(asr_service_pb2_grpc.FasterWhisperASRServicer):
             )
         except Exception as e:
             err_msg = str(e)
-            # cuBLAS 版本不匹配时自动降级 compute_type 重试
-            if "cublas" in err_msg.lower() and compute_type != "int8":
-                logger.warning("cuBLAS 加载失败 (%s)，降级到 int8 compute_type 重试", err_msg)
+            # cuBLAS 缺失 → GPU 不可用，回退到 CPU
+            if "cublas" in err_msg.lower() and device == "cuda":
+                logger.warning("cuBLAS 加载失败 (%s)，GPU 不可用，回退到 CPU", err_msg)
                 try:
-                    WhisperEngine.create_instance(model_name, device, "int8", download_root)
+                    WhisperEngine.create_instance(model_name, "cpu", compute_type, download_root)
                     self.engine = WhisperEngine.get_instance()
                     loaded = self.engine.is_loaded if self.engine else False
+                    logger.info("已回退到 CPU: model_loaded=%s", loaded)
                     return asr_service_pb2.StatusResponse(
                         model_loaded=loaded,
                         current_model=model_name,
-                        gpu_available=(device == "cuda"),
-                        device=device,
-                        message=f"Settings updated (fallback to int8): model={model_name}, device={device}",
+                        gpu_available=False,
+                        device="cpu",
+                        message=f"GPU (CUDA) 不可用: cuBLAS 缺失。已自动回退到 CPU 推理。"
+                                f"请安装 CUDA 12.x 或关闭 GPU 加速开关。",
                     )
                 except Exception as e2:
-                    logger.error("降级后仍失败: %s", e2)
-                    context.set_code(grpc.StatusCode.INTERNAL)
-                    context.set_details(str(e2))
-                    return asr_service_pb2.StatusResponse(
-                        model_loaded=False, message=f"Failed (fallback): {e2}"
-                    )
+                    logger.error("CPU 回退也失败: %s", e2)
             logger.error("UpdateSettings 失败: %s", e)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))

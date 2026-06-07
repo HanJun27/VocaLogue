@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass, field
 from collections import deque
 import time
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,7 @@ class WhisperEngine:
 
     _instance: Optional['WhisperEngine'] = None
     _model: Optional[WhisperModel] = None
+    _load_lock: threading.Lock = threading.Lock()
 
     def __init__(self, model_name: str = "large-v2", device: str = "cuda",
                  compute_type: str = "int8_float16"):
@@ -193,22 +195,23 @@ class WhisperEngine:
                         compute_type: str = "int8_float16",
                         download_root: str = "./models") -> 'WhisperEngine':
         """创建单例并加载模型"""
-        if cls._instance is not None:
-            # 如果模型和设备都相同，跳过重新加载
-            if (cls._instance.model_name == model_name
-                    and cls._instance.device == device
-                    and cls._instance.compute_type == compute_type
-                    and cls._instance.is_loaded):
-                logger.info("模型和设备未变化，跳过重新加载: model=%s device=%s",
-                            model_name, device)
+        with cls._load_lock:
+            if cls._instance is not None:
+                # 如果模型和设备都相同且已加载，跳过
+                if (cls._instance.model_name == model_name
+                        and cls._instance.device == device
+                        and cls._instance.compute_type == compute_type
+                        and cls._instance.is_loaded):
+                    logger.info("模型和设备未变化，跳过重新加载: model=%s device=%s",
+                                model_name, device)
+                    return cls._instance
+                logger.info("WhisperEngine 已存在，更新模型配置...")
+                cls._instance._load_model(model_name, device, compute_type, download_root)
                 return cls._instance
-            logger.info("WhisperEngine 已存在，更新模型配置...")
+
+            cls._instance = cls(model_name, device, compute_type)
             cls._instance._load_model(model_name, device, compute_type, download_root)
             return cls._instance
-
-        cls._instance = cls(model_name, device, compute_type)
-        cls._instance._load_model(model_name, device, compute_type, download_root)
-        return cls._instance
 
     def _load_model(self, model_name: str, device: str, compute_type: str,
                     download_root: str):

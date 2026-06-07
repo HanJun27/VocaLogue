@@ -2176,8 +2176,9 @@ onUnmounted(() => {
           @create-new="handleCreateNewConversation"
         />
 
+        <!-- ===== practice 视图 - 使用 fixed 定位，和 header 一样固定在页面上 ===== -->
         <template v-else-if="currentView === 'practice'">
-        <div class="flex-1 flex overflow-hidden" style="height: calc(100vh - 4rem)">
+        <div class="fixed inset-x-0 top-16 bottom-0 flex overflow-hidden z-10">
           <!-- 左侧历史对话边栏 -->
           <ConversationSidebar
             :conversations="conversationsList"
@@ -2191,7 +2192,7 @@ onUnmounted(() => {
 
           <!-- 右侧主内容区域 -->
           <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <!-- 固定顶部状态栏（不随聊天滚动） -->
+            <!-- 顶部状态栏（固定在聊天区上方，不随聊天滚动） -->
             <div class="flex-none px-5 md:px-12 pt-4 pb-2 flex items-center justify-between bg-gradient-to-b from-[#f7fbfa] to-transparent z-10">
               <div class="flex items-center gap-2">
                 <span class="px-2.5 py-1 bg-[#b4ffed] text-[#006053] font-mono text-[10px] font-black uppercase rounded-md tracking-wider">
@@ -2239,7 +2240,7 @@ onUnmounted(() => {
               />
             </div>
 
-            <!-- 固定底部控制面板（不随聊天滚动） -->
+            <!-- 底部控制面板（固定在聊天区下方，不随聊天滚动） -->
             <div class="flex-none z-20">
               <ControlPanel
                 :is-recording="isRecording"
