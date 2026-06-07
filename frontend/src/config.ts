@@ -18,6 +18,8 @@ export interface AppConfig {
   audioInputDeviceId: string; // '' 表示默认设备
   // 其他设置
   enableSubtitles: boolean;
+  // ASR 设置
+  asrGpuEnabled: boolean;           // 是否启用 GPU 加速（cuda vs cpu）
   // 模型特定配置
   modelConfig?: {
     // 豆包音色配置
@@ -62,6 +64,8 @@ const DEFAULT_CONFIG: AppConfig = {
   vadSilenceDuration: 500,
   vadThreshold: 0.05,
   enableSubtitles: true,
+  // ASR 设置
+  asrGpuEnabled: false,             // 默认 CPU 模式，避免首次使用无 GPU 时报错
   modelConfig: {
     doubaoSpeaker: 'zh_female_vv_jupiter_bigtts', // 默认豆包音色
     openaiVoice: 'alloy' // 默认 OpenAI 音色

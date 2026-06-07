@@ -110,6 +110,16 @@ const saveConfig = async () => {
       await savePipelineConfig();
     }
 
+    // 同步 ASR 设置到后端（GPU/CPU 切换）
+    try {
+      await api.updateAsrSettings({
+        device: config.value.asrGpuEnabled ? 'cuda' : 'cpu',
+      })
+      console.log('[SettingsPage] ASR 设置已同步:', config.value.asrGpuEnabled ? 'cuda' : 'cpu')
+    } catch (e) {
+      console.warn('[SettingsPage] ASR 设置同步失败（不影响本地配置）:', e)
+    }
+
     saved.value = true;
     setTimeout(() => {
       saved.value = false;
@@ -517,6 +527,21 @@ const testLlmConnection = async () => {
                 class="w-full accent-[#006053]"
               />
               <div class="text-center text-xs text-slate-500 mt-1">{{ config.vadThreshold }}</div>
+            </div>
+
+            <!-- ASR GPU 加速 -->
+            <div class="md:col-span-2">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input
+                  v-model="config.asrGpuEnabled"
+                  type="checkbox"
+                  class="w-5 h-5 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                />
+                <span class="text-sm font-semibold text-slate-700">启用 GPU 加速（ASR 语音识别）</span>
+              </label>
+              <p class="text-xs text-slate-400 mt-1 ml-8">
+                开启后使用 CUDA 进行语音识别推理，大幅降低识别延迟。需确保机器有 NVIDIA GPU 且已安装 CUDA 驱动。CPU 模式兼容性更好但速度较慢。
+              </p>
             </div>
           </div>
         </section>

@@ -363,6 +363,28 @@ export const api = {
   },
 
   /**
+   * 更新 ASR 设置（GPU/CPU 切换等）
+   * POST /api/asr/settings/update
+   */
+  async updateAsrSettings(settings: {
+    device: 'cuda' | 'cpu';
+    model?: string;
+    enableVad?: boolean;
+  }): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/asr/settings/update`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        device: settings.device,
+        model: settings.model || 'large-v2',
+        enableVad: settings.enableVad ?? true,
+      }),
+    })
+    const result: ApiResponse<null> = await response.json()
+    if (result.code !== 200) throw new Error(result.message)
+  },
+
+  /**
    * 测试 LLM 引擎连接
    * POST /api/practice/test-llm
    */

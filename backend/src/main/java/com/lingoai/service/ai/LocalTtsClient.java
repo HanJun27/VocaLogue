@@ -14,6 +14,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * 本地 TTS 客户端
@@ -35,6 +37,7 @@ public class LocalTtsClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofMillis(config.getTimeoutMs()))
                 .build();
+        log.info("LocalTTS 客户端初始化: baseUrl='{}'", config.getBaseUrl());
     }
 
     /**
@@ -53,7 +56,7 @@ public class LocalTtsClient {
         // 构建 JSON 请求体
         String json = buildJsonPayload(text, effectiveEngine, effectiveVoice, outputFormat);
 
-        String url = config.getBaseUrl() + "/tts";
+        String url = config.getBaseUrl().trim() + "/tts";
         log.info("LocalTTS request: engine={} voice={} text_len={} url={}",
                 effectiveEngine, effectiveVoice, text.length(), url);
 
@@ -97,7 +100,7 @@ public class LocalTtsClient {
      * 获取可用语音列表
      */
     public String getVoices(String engine) throws IOException {
-        String url = config.getBaseUrl() + "/voices?engine=" + engine;
+        String url = config.getBaseUrl().trim() + "/voices?engine=" + engine;
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -128,7 +131,7 @@ public class LocalTtsClient {
     public boolean isHealthy() {
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(config.getBaseUrl() + "/health"))
+                    .uri(URI.create(config.getBaseUrl().trim() + "/health"))
                     .timeout(java.time.Duration.ofSeconds(5))
                     .GET()
                     .build();
@@ -139,6 +142,36 @@ public class LocalTtsClient {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * 流式合成为多段音频（逐句合成，模拟流式 TTS）
+     *
+     * @param textSegments 文本片段列表（通常按句子切分）
+     * @param engine       TTS 引擎
+     * @param voice        语音 ID
+     * @param onChunk      每段音频合成完成后的回调
+     */
+    public void synthesizeStream(List<String> textSegments,
+                                  String engine,
+                                  String voice,
+                                  Consumer<byte[]> onChunk) throws IOException {
+        if (textSegments == null || textSegments.isEmpty()) return;
+
+        log.info("Stream TTS: {} segments, engine={}, voice={}", textSegments.size(), engine, voice);
+
+        for (int i = 0; i < textSegments.size(); i++) {
+            String segment = textSegments.get(i);
+            if (segment.trim().isEmpty()) continue;
+
+            log.debug("TTS segment [{}/{}]: len={}", i + 1, textSegments.size(), segment.length());
+            byte[] audioData = synthesize(segment, engine, voice);
+            if (audioData != null && audioData.length > 0) {
+                onChunk.accept(audioData);
+            }
+        }
+
+        log.info("Stream TTS complete: {} segments synthesized", textSegments.size());
     }
 
     // ---- private helpers ----

@@ -6,6 +6,7 @@
 import type { IVoiceService } from './IVoiceService'
 import type { VoiceServiceConfig, VoiceServiceEventHandlers } from './IVoiceService'
 import { VoiceServiceFactory } from './VoiceServiceFactory'
+import { PipelineWebSocketAdapter } from './adapters/PipelineWebSocketAdapter'
 import { configService } from '@/config'
 import type { Scenario } from '@/types'
 
@@ -26,11 +27,17 @@ export class VoiceService {
   private buildConfigFromAppConfig(): VoiceServiceConfig {
     const appConfig = configService.getConfig()
     
+    // 映射 modelProvider
+    let mappedProvider: VoiceServiceConfig['modelProvider'] = 'doubao'
+    if (appConfig.modelProvider === 'gpt-4o') mappedProvider = 'openai'
+    else if (appConfig.modelProvider === 'doubao') mappedProvider = 'doubao'
+    else if (appConfig.modelProvider === 'pipeline') mappedProvider = 'pipeline'
+
     return {
       apiKey: appConfig.apiKey,
       appId: appConfig.appId,
       secretKey: appConfig.secretKey,
-      modelProvider: appConfig.modelProvider === 'gpt-4o' ? 'openai' : 'doubao',
+      modelProvider: mappedProvider,
       backendUrl: appConfig.backendUrl || 'http://localhost:8080',
       sampleRate: appConfig.sampleRate,
       audioChunkSize: appConfig.audioChunkSize,
@@ -135,6 +142,32 @@ export class VoiceService {
     }
     
     this.adapter.stopAudioPlayback()
+  }
+  
+  /**
+   * 发送用户输入到管线 WebSocket
+   * 仅 PipelineWebSocketAdapter 支持此方法
+   */
+  sendUserInput(text: string, history?: Array<{role: string; content: string}>): void {
+    if (this.adapter instanceof PipelineWebSocketAdapter) {
+      this.adapter.sendUserInput(text, history)
+    }
+  }
+
+  /**
+   * 发送 ASR 中间结果到管线（触发推测性生成）
+   */
+  sendAsrInterim(interimText: string): void {
+    if (this.adapter instanceof PipelineWebSocketAdapter) {
+      this.adapter.sendAsrInterim(interimText)
+    }
+  }
+
+  /**
+   * 是否使用管线 WebSocket 模式
+   */
+  get isPipelineMode(): boolean {
+    return this.adapter instanceof PipelineWebSocketAdapter
   }
   
   /**

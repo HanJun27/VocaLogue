@@ -49,7 +49,6 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -139,7 +138,7 @@ async def health():
 
 @app.get("/voices", response_model=VoicesResponse)
 async def list_voices(
-    engine: str = Query("piper", regex=r"^(piper|edge-tts)$"),
+    engine: str = Query("piper", pattern=r"^(piper|edge-tts)$"),
     language: Optional[str] = Query(None, description="按语言过滤，如 en-US"),
 ):
     """列出可用的语音列表"""
@@ -178,7 +177,7 @@ async def list_voices(
 
 
 @app.get("/voices/default")
-async def get_default_voice(engine: str = Query("piper", regex=r"^(piper|edge-tts)$")):
+async def get_default_voice(engine: str = Query("piper", pattern=r"^(piper|edge-tts)$")):
     """获取默认语音配置"""
     if engine == "piper":
         return {

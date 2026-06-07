@@ -17,6 +17,12 @@ interface Props {
   currentTranscript: string
   audioDevices: AudioDeviceInfo[]
   selectedAudioDeviceId: string
+  /** AI 是否正在说话或思考（显示打断按钮） */
+  isAISpeaking?: boolean
+  /** AI 是否在连接中 */
+  isVoiceConnecting?: boolean
+  /** 实时对话模式激活 */
+  isRealtimeMode?: boolean
 }
 
 const props = defineProps<Props>()
@@ -28,6 +34,10 @@ const emit = defineEmits<{
   sendText: [text: string]
   openRatingModal: []
   changeAudioDevice: [deviceId: string]
+  /** 打断 AI 播放 */
+  interrupt: []
+  /** 切换实时对话模式 */
+  toggleRealtimeMode: []
 }>()
 
 const typedText = ref('')
@@ -142,20 +152,35 @@ const selectedDeviceLabel = computed(() => {
 
               <!-- 录音按钮区域 -->
               <div class="relative flex items-center justify-center">
-                <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
-                <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
+                <!-- AI 正在说话/思考时显示打断按钮 -->
+                <div v-if="isAISpeaking && !isRecording" class="absolute inset-0 flex items-center justify-center">
+                  <button
+                    @click="emit('interrupt')"
+                    class="w-16 h-16 rounded-full bg-red-500 text-white shadow-[0_6px_20px_rgba(220,38,38,0.3)] flex items-center justify-center active:scale-95 transition-all z-20 hover:scale-105 cursor-pointer animate-pulse"
+                    title="打断 AI 并开始说话"
+                  >
+                    <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M6 6h4v12H6V6zm8 0h4v12h-4V6z"/>
+                    </svg>
+                  </button>
+                </div>
 
-                <button
-                  @click="isRecording ? emit('stopRecording') : emit('startRecording')"
-                  :class="[
-                    'relative w-16 h-16 rounded-full shadow-[0_6px_20px_rgba(0,96,83,0.25)] flex items-center justify-center active:scale-95 transition-all z-10 cursor-pointer',
-                    isRecording ? 'bg-red-500 text-white' : 'bg-[#006053] text-white hover:scale-105'
-                  ]"
-                  :title="isRecording ? '结束录音并提交' : '开始录音答题'"
-                >
-                  <div v-if="isRecording" class="w-4.5 h-4.5 bg-white rounded-sm animate-pulse" />
-                  <Mic v-else class="w-6 h-6 stroke-[2.5px]" />
-                </button>
+                <template v-else>
+                  <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
+                  <div v-if="isRecording" class="pulsing-ring w-20 h-20"></div>
+
+                  <button
+                    @click="isRecording ? emit('stopRecording') : emit('startRecording')"
+                    :class="[
+                      'relative w-16 h-16 rounded-full shadow-[0_6px_20px_rgba(0,96,83,0.25)] flex items-center justify-center active:scale-95 transition-all z-10 cursor-pointer',
+                      isRecording ? 'bg-red-500 text-white' : 'bg-[#006053] text-white hover:scale-105'
+                    ]"
+                    :title="isRecording ? '结束录音并提交' : '开始录音答题'"
+                  >
+                    <div v-if="isRecording" class="w-4.5 h-4.5 bg-white rounded-sm animate-pulse" />
+                    <Mic v-else class="w-6 h-6 stroke-[2.5px]" />
+                  </button>
+                </template>
               </div>
             </div>
           </template>
@@ -177,6 +202,24 @@ const selectedDeviceLabel = computed(() => {
             </button>
           </form>
 
+          <button
+            @click="emit('toggleRealtimeMode')"
+            :class="[
+              'w-7 h-7 flex items-center justify-center rounded-full border transition-colors shadow-sm cursor-pointer',
+              isRealtimeMode ? 'bg-red-500 text-white border-red-400 animate-pulse' : 'bg-white text-slate-500 hover:text-slate-800 border-slate-200'
+            ]"
+            :title="isRealtimeMode ? '停止实时对话' : '实时对话模式（语音检测自动打断）'"
+          >
+            <svg v-if="isRealtimeMode" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 6h4v12H6V6zm8 0h4v12h-4V6z"/>
+            </svg>
+            <svg v-else class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
           <button
             @click="emit('toggleTypingMode')"
             :class="[

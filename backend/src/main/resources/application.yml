@@ -98,7 +98,7 @@ ai:
       default-voice: alloy
     # 本地 TTS (Piper TTS + Edge TTS)
     local:
-      base-url: ${TTS_SERVICE_URL:http://localhost:8000}
+      base-url: ${TTS_SERVICE_URL:http://localhost:8001}
       default-engine: piper        # piper | edge-tts
       piper-voice: en_US-amy-medium
       piper-speed: 1.0

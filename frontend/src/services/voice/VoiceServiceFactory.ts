@@ -7,6 +7,7 @@ import type { IVoiceService } from './IVoiceService'
 import type { VoiceServiceConfig } from './IVoiceService'
 import { OpenAIVoiceServiceAdapter } from './adapters/OpenAIVoiceServiceAdapter'
 import { DoubaoVoiceServiceAdapter } from './adapters/DoubaoVoiceServiceAdapter'
+import { PipelineWebSocketAdapter } from './adapters/PipelineWebSocketAdapter'
 
 /**
  * 语音服务工厂类
@@ -29,8 +30,11 @@ export class VoiceServiceFactory {
         console.log('[VoiceServiceFactory] 创建豆包适配器')
         return new DoubaoVoiceServiceAdapter(config)
       
+      case 'pipeline':
+        console.log('[VoiceServiceFactory] 创建管线 WebSocket 适配器')
+        return new PipelineWebSocketAdapter(config)
+
       case 'custom':
-        // 自定义适配器，可以在这里扩展
         throw new Error('自定义适配器暂未实现')
       
       default:
@@ -61,6 +65,12 @@ export class VoiceServiceFactory {
         requiresAppId: true
       },
       {
+        id: 'pipeline',
+        name: 'ASR→LLM→TTS 管线',
+        description: '自定义管线模式，通过后端 WebSocket 协调 ASR/LLM/TTS',
+        requiresAppId: false
+      },
+      {
         id: 'custom',
         name: '自定义模型',
         description: '自定义语音服务适配器',
@@ -78,9 +88,12 @@ export class VoiceServiceFactory {
   } {
     const errors: string[] = []
     
-    // 验证 API Key
-    if (!config.apiKey || config.apiKey.trim().length === 0) {
-      errors.push('API Key 不能为空')
+    // Pipeline 模式不需要前端 API Key（后端管理密钥）
+    if (config.modelProvider !== 'pipeline') {
+      // 验证 API Key
+      if (!config.apiKey || config.apiKey.trim().length === 0) {
+        errors.push('API Key 不能为空')
+      }
     }
     
     // 验证 App ID（豆包需要）

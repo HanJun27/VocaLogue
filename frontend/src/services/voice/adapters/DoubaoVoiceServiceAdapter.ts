@@ -567,22 +567,35 @@ export class DoubaoVoiceServiceAdapter implements IVoiceService {
       }
       
       this.ws.onmessage = (event) => {
-        // 检查是否是文本消息（后端通知）
         if (typeof event.data === 'string') {
           try {
             const message = JSON.parse(event.data)
+
+            if (message.type === 'success') {
+              console.log('[DoubaoAdapter] 后端代理确认豆包连接成功:', message.message)
+              backendReady = true
+              resolve()
+              return
+            }
+
             if (message.type === 'error') {
               console.error('[DoubaoAdapter] 后端代理错误:', message.message)
-              this.handlers.onError?.(new Error(message.message))
-            } else if (message.type === 'disconnect') {
+              if (!backendReady) {
+                reject(new Error(message.message))
+              } else {
+                this.handlers.onError?.(new Error(message.message))
+              }
+              return
+            }
+
+            if (message.type === 'disconnect') {
               console.warn('[DoubaoAdapter] 后端通知连接断开:', message.message)
               this.handlers.onDisconnected?.(new Error(message.message))
+              return
             }
           } catch (e) {
-            // 不是JSON消息，忽略
           }
         } else {
-          // 二进制消息，是豆包返回的音频数据
           this.handleMessage(event.data)
         }
       }

@@ -15,7 +15,7 @@ const emit = defineEmits<{
 
 const handleSelectScenario = (sc: Scenario) => {
   emit('selectScenario', sc)
-  emit('viewChange', 'practice')
+  // viewChange('practice') 已移除——由 App.vue 的 PracticeModeModal 处理
 }
 </script>
 

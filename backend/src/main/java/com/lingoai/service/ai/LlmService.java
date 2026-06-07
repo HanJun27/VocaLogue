@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 /**
@@ -88,6 +89,7 @@ public class LlmService {
                             String baseUrl,
                             String engine) throws IOException {
         List<Map<String, String>> messages = new ArrayList<>();
+        // system prompt
         if (systemPrompt != null) {
             messages.add(Map.of("role", "system", "content", systemPrompt));
         }
@@ -97,8 +99,9 @@ public class LlmService {
     }
 
     /**
-     * 流式对话 — 逐行回调，实现真正的流式响应
+     * AI 流式对话 — 逐行回调，实现真正的流式 SSE 推送
      * @param onChunk 每收到一行 SSE 数据时的回调
+     * @param engine 引擎类型：openai | deepseek | glm | qianwen | doubao
      */
     public void streamChat(List<Map<String, String>> conversationHistory,
                           String systemPrompt,
@@ -109,12 +112,38 @@ public class LlmService {
                           String engine,
                           Consumer<String> onChunk) throws IOException {
         List<Map<String, String>> messages = new ArrayList<>();
+        // system prompt
         if (systemPrompt != null) {
             messages.add(Map.of("role", "system", "content", systemPrompt));
         }
         messages.addAll(conversationHistory);
 
         openAiClient.streamTextCommand(messages, model, temperature, apiKey, baseUrl, engine, onChunk);
+    }
+
+    /**
+     * AI 流式对话（可取消版）— 返回 CompletableFuture，可调用 cancel(true) 中断
+     * @param onChunk 每收到一行 SSE 数据时的回调
+     * @param engine 引擎类型：openai | deepseek | glm | qianwen | doubao
+     * @return CompletableFuture，可取消
+     */
+    public CompletableFuture<?> streamChatCancellable(
+                          List<Map<String, String>> conversationHistory,
+                          String systemPrompt,
+                          String model,
+                          Double temperature,
+                          String apiKey,
+                          String baseUrl,
+                          String engine,
+                          Consumer<String> onChunk) {
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (systemPrompt != null) {
+            messages.add(Map.of("role", "system", "content", systemPrompt));
+        }
+        messages.addAll(conversationHistory);
+
+        return openAiClient.streamChatCancellable(
+                messages, model, temperature, apiKey, baseUrl, engine, onChunk);
     }
 
     // ==================== punctuate.command.ts — 标点恢复 ====================

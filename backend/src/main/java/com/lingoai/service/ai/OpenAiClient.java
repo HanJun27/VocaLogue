@@ -8,9 +8,7 @@ import com.lingoai.config.AiConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,6 +16,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 /**
@@ -206,6 +205,19 @@ public class OpenAiClient {
      * 执行流式聊天补全 API 调用
      * 使用流式处理器逐行读取 SSE 响应
      */
+    private String executeStreamChatCompletion(ObjectNode requestBody,
+                                              String apiKey,
+                                              String baseUrl) throws IOException {
+        StringBuilder collector = new StringBuilder();
+        executeStreamChatCompletion(requestBody, apiKey, baseUrl,
+            line -> collector.append(line).append("\n"));
+        return collector.toString();
+    }
+
+    /**
+     * 执行流式聊天补全 API 调用 — 逐行回调
+     * @param onChunk 每收到一行 SSE 数据时的回调
+     */
     private void executeStreamChatCompletion(ObjectNode requestBody,
                                              String apiKey,
                                              String baseUrl,
@@ -222,31 +234,20 @@ public class OpenAiClient {
                     .timeout(Duration.ofSeconds(120))
                     .build();
 
-            HttpResponse<java.io.InputStream> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            // 使用流式处理器逐行读取
+            java.net.http.HttpResponse<java.util.stream.Stream<String>> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
 
             if (response.statusCode() != 200) {
+                // 读取错误信息
                 StringBuilder errorBody = new StringBuilder();
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(response.body()))) {
-                    br.lines().forEach(line -> errorBody.append(line).append("\n"));
-                }
+                response.body().forEach(line -> errorBody.append(line).append("\n"));
                 log.error("OpenAI API streaming error: status={}, body={}", response.statusCode(), errorBody);
                 throw new IOException("OpenAI API failed: " + response.statusCode());
             }
 
-            // 逐行读取 SSE 流，实时回调
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(response.body()))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    if (line.startsWith("data: ")) {
-                        String data = line.substring(6).trim();
-                        if ("[DONE]".equals(data)) {
-                            continue;
-                        }
-                        onChunk.accept(line);
-                    }
-                }
-            }
+            // 逐行回调
+            response.body().forEach(onChunk);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Request interrupted", e);
@@ -416,5 +417,75 @@ public class OpenAiClient {
             case "ollama" -> aiConfig.getLlm().getOllama();
             default -> aiConfig.getLlm().getOpenai();
         };
+    }
+
+    // ==================== 可取消的流式请求 ====================
+
+    /**
+     * 可取消的流式聊天补全 — 返回 Future 用于取消
+     *
+     * 与 executeStreamChatCompletion 的区别：
+     *  - 使用 sendAsync 异步发起请求
+     *  - 返回 CompletableFuture<?>，调用方可取消（future.cancel(true)）
+     *
+     * @param onChunk 每收到一行 SSE 数据时的回调
+     * @return CompletableFuture，可调用 cancel(true) 来中断请求
+     */
+    public CompletableFuture<?> streamChatCancellable(
+            List<Map<String, String>> messages,
+            String model,
+            Double temperature,
+            String apiKey,
+            String baseUrl,
+            String engine,
+            Consumer<String> onChunk) {
+
+        AiConfig.LlmProvider provider = getLlmProvider(engine);
+        String effectiveApiKey = (apiKey != null && !apiKey.isEmpty()) ? apiKey :
+                (provider != null ? provider.getApiKey() : "");
+        String effectiveBaseUrl = (baseUrl != null && !baseUrl.isEmpty()) ? baseUrl :
+                (provider != null ? provider.getBaseUrl() : "https://api.openai.com/v1");
+        String effectiveModel = (model != null && !model.isEmpty()) ? model :
+                (provider != null && provider.getDefaultModel() != null ?
+                        provider.getDefaultModel() : "gpt-4o");
+
+        ObjectNode requestBody = buildStreamChatRequest(messages, effectiveModel, temperature, engine);
+        String url = buildChatUrl(effectiveBaseUrl);
+        String bearerToken = effectiveApiKey;
+
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Authorization", "Bearer " + bearerToken)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
+                    .timeout(Duration.ofSeconds(120))
+                    .build();
+
+            // 使用 sendAsync 返回可取消的 Future
+            CompletableFuture<java.net.http.HttpResponse<java.util.stream.Stream<String>>> responseFuture =
+                    httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines());
+
+            // 处理响应流
+            CompletableFuture<Void> processingFuture = responseFuture.thenAccept(response -> {
+                if (response.statusCode() != 200) {
+                    StringBuilder errorBody = new StringBuilder();
+                    try (var lines = response.body()) {
+                        lines.forEach(line -> errorBody.append(line).append("\n"));
+                    }
+                    log.error("OpenAI API streaming error: status={}, body={}",
+                            response.statusCode(), errorBody);
+                    return;
+                }
+                try (var lines = response.body()) {
+                    lines.forEach(onChunk);
+                }
+            });
+
+            return processingFuture;
+
+        } catch (IOException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 }

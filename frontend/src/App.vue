@@ -9,6 +9,7 @@ import PracticeSummary from '@/components/PracticeSummary.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ConversationSidebar from '@/components/ConversationSidebar.vue'
 import ConversationHistory from '@/components/ConversationHistory.vue'
+import PracticeModeModal from '@/components/PracticeModeModal.vue'
 import { SCENARIOS, MOCK_RATING_DATABASE } from '@/scenariosData'
 import type { DialectMessage, Scenario, PronunciationScore, GrammarFeedback, ConversationSummary } from '@/types'
 import { Award, AlertCircle } from 'lucide-vue-next'
@@ -19,9 +20,11 @@ import {
   type BrowserCapabilities 
 } from '@/utils/browserCompat'
 import { voiceService } from '@/services/voice/VoiceService'
+import { PipelineWebSocketAdapter } from '@/services/voice/adapters/PipelineWebSocketAdapter'
 import { whisperASRService } from '@/services/asr'
 import { configService } from '@/config'
 import type { TranscriptEvent } from '@/services/voice/IVoiceService'
+import { startAutoInterruptVAD, stopAutoInterruptVAD, getVAD } from '@/utils/vad'
 
 // 浏览器兼容性检测
 const browserCapabilities = ref<BrowserCapabilities | null>(null)
@@ -32,12 +35,25 @@ const compatMessage = ref('')
 const USE_API_MODE = ref(true)
 const currentSessionId = ref<string | null>(null)
 
+// 模式选择状态
+const showModeSelector = ref(false)
+const practiceMode = ref<'pipeline' | 'realtime'>('pipeline')
+
 // 真实语音大模型状态
 const voiceConnected = ref(false)
 const voiceConnecting = ref(false)
 const voiceAiReady = ref(false)
 const voiceAiInterimText = ref('')
 const pendingAiMessageId = ref<string | null>(null)
+
+// 管线 WebSocket 模式状态（替代 REST SSE）
+const pipelineAdapter = ref<PipelineWebSocketAdapter | null>(null)
+const pipelineWsConnected = ref(false)
+// 管线模式下用于音频流式 ASR
+let pipelineMediaRecorder: MediaRecorder | null = null
+let pipelineMediaStream: MediaStream | null = null
+let pipelineAudioChunks: Blob[] = []
+let asrWebSocket: WebSocket | null = null
 
 // 是否应该使用真实语音大模型
 const shouldUseVoiceAI = computed(() => {
@@ -61,6 +77,23 @@ const isThinking = ref(false)
 const isRecording = ref(false)
 const currentTranscript = ref('')
 const recognitionInstance = ref<any>(null)
+
+// ===== 实时对话模式 =====
+const isRealtimeMode = ref(false)
+/** VAD 检测 — AudioContext 实例 */
+let realtimeAudioCtx: AudioContext | null = null
+/** VAD 检测 — AnalyserNode 实例 */
+let realtimeAnalyser: AnalyserNode | null = null
+/** VAD 检测 — 定时器 */
+let realtimeVadTimer: ReturnType<typeof setInterval> | null = null
+/** VAD 检测 — 连续静音帧计数 */
+let realtimeSilenceFrames = 0
+/** VAD 检测 — 是否已检测到过语音 */
+let realtimeHasSpeech = false
+/** VAD 检测 — 是否已触发 ASR（防重复触发） */
+let realtimeAsrPending = false
+/** 当前流式 ASR 用户消息 ID（用于实时更新对话框） */
+let realtimeAsrMsgId: string | null = null
 
 // Whisper ASR 录音状态
 const isWhisperRecording = ref(false)
@@ -404,6 +437,32 @@ watch(currentScenario, (newScenario) => {
   resetConversationForScenario(newScenario)
 }, { immediate: true })
 
+// 模式切换时，断开对应的连接
+watch(practiceMode, (newMode) => {
+  if (newMode !== 'pipeline') {
+    disconnectPipelineWebSocket()
+  }
+  if (newMode !== 'realtime') {
+    disconnectVoiceAI()
+  }
+})
+
+// 监听 AI 播放状态，自动启停 VAD 打断检测
+watch([isPlayingAudio, isThinking], ([playing, thinking]) => {
+  if (!currentSessionId.value) return  // 只在活跃会话中启用
+  if (playing || thinking) {
+    if (!getVAD()?.running) {
+      startAutoInterruptVAD(() => {
+        interruptPlayback()
+      }).catch(() => {
+        // VAD 启动失败（无麦克风权限），静默忽略
+      })
+    }
+  } else {
+    stopAutoInterruptVAD()
+  }
+})
+
 const handleToggleTranslation = (messageId: string) => {
   messages.value = messages.value.map((msg) =>
     msg.id === messageId ? { ...msg, showTranslation: !msg.showTranslation } : msg
@@ -411,15 +470,346 @@ const handleToggleTranslation = (messageId: string) => {
 }
 
 /**
+ * 管线模式：启动音频录音 + 流式 WS 音频发送（200ms 分片发送到后端 ASR）
+ */
+async function startPipelineAsrRecording() {
+  // 检查浏览器是否支持录音
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('您的浏览器不支持麦克风录音')
+    return
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: selectedAudioDeviceId.value ? { exact: selectedAudioDeviceId.value } : undefined,
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+      }
+    })
+
+    pipelineMediaStream = stream
+
+    // 使用 MediaRecorder 每 200ms 发送音频块到后端 ASR
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm'
+
+    const recorder = new MediaRecorder(stream, { mimeType })
+    pipelineMediaRecorder = recorder
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        // 通过 WebSocket 发送二进制音频块到后端 ASR
+        if (pipelineAdapter.value) {
+          pipelineAdapter.value.sendAudioChunk(event.data)
+        }
+      }
+    }
+
+    recorder.onstop = () => {
+      // 停止所有音轨
+      stream.getTracks().forEach(t => t.stop())
+
+      // 通知后端 ASR 音频结束，开始识别
+      if (pipelineAdapter.value) {
+        pipelineAdapter.value.sendAsrEnd()
+      }
+      isRecording.value = false
+      console.log('[Pipeline] ASR 录音结束，已发送结束信号到后端')
+    }
+
+    // 每 200ms 收集一次音频块（流式发送）
+    recorder.start(200)
+    isRecording.value = true
+    console.log('[Pipeline] ASR 流式录音开始，每 200ms 发送音频块')
+
+  } catch (err: any) {
+    console.error('[Pipeline] 启动录音失败:', err)
+    alert(`录音启动失败: ${err.message}`)
+  }
+}
+
+// ==================== 实时对话模式 ====================
+
+/**
+ * VAD 检测 — 使用 AnalyserNode 检测音频能量
+ * 每 200ms 检查一次：
+ *   - 能量 > 阈值 → 有语音
+ *   - 能量 < 阈值 → 静音，累加静音帧
+ *   - 静音帧 >= 8 (≈1.6s) 且之前有过语音 → 触发 ASR
+ *   - 检测到语音时如果 AI 正在说话 → 自动打断
+ */
+function checkRealtimeVad(): void {
+  if (!realtimeAnalyser) return
+
+  const data = new Uint8Array(realtimeAnalyser.frequencyBinCount)
+  realtimeAnalyser.getByteFrequencyData(data)
+  const avg = data.reduce((a, b) => a + b, 0) / data.length
+
+  const hasSpeech = avg > 15 // 能量阈值
+
+  if (hasSpeech) {
+    // 语音中
+    realtimeSilenceFrames = 0
+    if (!realtimeHasSpeech) {
+      realtimeHasSpeech = true
+      currentTranscript.value = '...'
+      // 实时对话模式下，检测到语音就打断（不依赖 isPlayingAudio 标志，
+      // 因为多段 TTS 的段间间隙 isPlayingAudio 会短暂为 false）
+      if (isPlayingAudio.value || isThinking.value || isRealtimeMode.value) {
+        console.log('[Realtime] 检测到用户说话，自动打断 AI')
+        interruptPlayback()
+      }
+    }
+  } else {
+    // 静音
+    if (realtimeHasSpeech) {
+      realtimeSilenceFrames++
+      // ≈1.6s 静音 → 触发 ASR
+      if (realtimeSilenceFrames >= 8 && !realtimeAsrPending) {
+        realtimeAsrPending = true
+        realtimeHasSpeech = false
+        realtimeSilenceFrames = 0
+        currentTranscript.value = ''
+
+        // 创建用户消息占位
+        const minutesAdded = messages.value.length + 1
+        const timeString = `10:${minutesAdded < 10 ? '0' + minutesAdded : minutesAdded}`
+        const tempMsg: DialectMessage = {
+          id: 'asr_' + Date.now(),
+          role: 'user',
+          text: '',
+          timestamp: timeString,
+        }
+        realtimeAsrMsgId = tempMsg.id
+        messages.value = [...messages.value, tempMsg]
+
+        // 停止当前录音机 → onstop 会自动 sendAsrEnd
+        if (pipelineMediaRecorder && pipelineMediaRecorder.state === 'recording') {
+          console.log('[Realtime] 静音检测，停止录音机触发 ASR')
+          pipelineMediaRecorder.stop()
+        } else if (pipelineAdapter.value) {
+          console.log('[Realtime] 静音检测，直接 sendAsrEnd')
+          pipelineAdapter.value.sendAsrEnd()
+        }
+      }
+    }
+  }
+}
+
+/**
+ * 启动实时对话模式
+ *  1. 连接管线 WS
+ *  2. 打开麦克风 + MediaRecorder 持续录音
+ *  3. 启动 AnalyserNode VAD
+ *  4. VAD 检测静音 → 自动 ASR → LLM → 继续录音
+ */
+async function startRealtimeConversation(): Promise<void> {
+  // 确保管线 WS 已连接
+  if (!pipelineWsConnected.value) {
+    await connectPipelineWebSocket()
+    if (!pipelineWsConnected.value) {
+      console.error('[Realtime] 管线 WS 连接失败')
+      return
+    }
+  }
+
+  // 打断 AI 播放
+  if (isPlayingAudio.value || isThinking.value) {
+    interruptPlayback()
+    await new Promise(r => setTimeout(r, 300))
+  }
+
+  try {
+    // 获取麦克风流
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: selectedAudioDeviceId.value ? { exact: selectedAudioDeviceId.value } : undefined,
+        echoCancellation: true,
+        noiseSuppression: true,
+      }
+    })
+    pipelineMediaStream = stream
+
+    // 设置 VAD 分析器
+    const audioCtx = new AudioContext()
+    const source = audioCtx.createMediaStreamSource(stream)
+    const analyser = audioCtx.createAnalyser()
+    analyser.fftSize = 256
+    source.connect(analyser)
+    realtimeAudioCtx = audioCtx
+    realtimeAnalyser = analyser
+
+    // 启动 MediaRecorder 持续录音（200ms 分片）
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus' : 'audio/webm'
+
+    const recorder = new MediaRecorder(stream, { mimeType })
+    pipelineMediaRecorder = recorder
+
+    recorder.ondataavailable = (event) => {
+      // 持续发送所有音频块。后端在 asr_end 前积累到一个 gRPC 流，
+      // asr_end 后自动创建新流，不会混淆
+      if (event.data.size > 0 && pipelineAdapter.value) {
+        pipelineAdapter.value.sendAudioChunk(event.data)
+      }
+    }
+
+    recorder.onstop = () => {
+      // 停止时不关闭 mic 流（VAD + 后续 recorder 复用同一个 stream）
+      isRecording.value = false
+      // 通知后端 ASR 音频结束，开始识别
+      if (pipelineAdapter.value) {
+        pipelineAdapter.value.sendAsrEnd()
+      }
+      console.log('[Realtime] 录音停止，已发送结束信号到后端')
+    }
+
+    recorder.start(200)
+    isRecording.value = true
+    isRealtimeMode.value = true
+
+    // 重置 VAD 状态
+    realtimeSilenceFrames = 0
+    realtimeHasSpeech = false
+    realtimeAsrPending = false
+    realtimeAsrMsgId = null
+
+    // 启动 VAD 定时器（每 200ms）
+    realtimeVadTimer = setInterval(() => checkRealtimeVad(), 200)
+
+    console.log('[Realtime] 实时对话模式已启动')
+  } catch (err: any) {
+    console.error('[Realtime] 启动失败:', err)
+    alert(`实时对话启动失败: ${err.message}`)
+  }
+}
+
+/**
+ * 重启实时录音机（每轮 ASR 后调用，确保下一轮音频有完整 WebM 头）
+ * 复用已有的 pipelineMediaStream，不重新获取 getUserMedia
+ */
+function restartRealtimeRecorder(): void {
+  if (!pipelineMediaStream) return
+
+  // 停止当前录音机
+  if (pipelineMediaRecorder && pipelineMediaRecorder.state === 'recording') {
+    pipelineMediaRecorder.stop()
+  }
+
+  // 创建新的 MediaRecorder → 新的 WebM 流，包含完整 EBML 头
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus' : 'audio/webm'
+
+  const recorder = new MediaRecorder(pipelineMediaStream, { mimeType })
+  pipelineMediaRecorder = recorder
+
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0 && pipelineAdapter.value) {
+      pipelineAdapter.value.sendAudioChunk(event.data)
+    }
+  }
+
+  recorder.onstop = () => {
+    isRecording.value = false
+    if (pipelineAdapter.value) {
+      pipelineAdapter.value.sendAsrEnd()
+    }
+  }
+
+  recorder.start(200)
+  isRecording.value = true
+  console.log('[Realtime] 录音机已重启（新 WebM 流）')
+}
+
+/**
+ * 停止实时对话模式
+ */
+function stopRealtimeConversation(): void {
+  isRealtimeMode.value = false
+
+  // 停止 VAD
+  if (realtimeVadTimer) {
+    clearInterval(realtimeVadTimer)
+    realtimeVadTimer = null
+  }
+  if (realtimeAudioCtx) {
+    realtimeAudioCtx.close().catch(() => {})
+    realtimeAudioCtx = null
+  }
+  realtimeAnalyser = null
+  realtimeHasSpeech = false
+  realtimeSilenceFrames = 0
+  realtimeAsrPending = false
+  realtimeAsrMsgId = null
+
+  // 停止录音
+  if (pipelineMediaRecorder && pipelineMediaRecorder.state === 'recording') {
+    pipelineMediaRecorder.stop()
+  }
+  pipelineMediaRecorder = null
+
+  // 停止麦克风流（onstop 中不再自动停止，这里需要手动清理）
+  if (pipelineMediaStream) {
+    pipelineMediaStream.getTracks().forEach(t => t.stop())
+    pipelineMediaStream = null
+  }
+
+  currentTranscript.value = ''
+  console.log('[Realtime] 实时对话模式已停止')
+}
+
+/**
+ * 切换实时对话模式
+ */
+async function toggleRealtimeMode(): Promise<void> {
+  if (isRealtimeMode.value) {
+    stopRealtimeConversation()
+  } else {
+    await startRealtimeConversation()
+  }
+}
+
+/**
  * 开始录音 - 根据配置选择合适的方案
- * 优先级：豆包 Realtime API > Whisper ASR > 浏览器原生 Web Speech
+ * 优先级：管线 WS + ASR > 豆包 Realtime API > Whisper ASR > 浏览器原生 Web Speech
  */
 const startRecording = async () => {
-  // 停止之前的录音
+  // 停止之前的录音 — 如果 AI 正在说话/思考，自动打断
+  if (isPlayingAudio.value || isThinking.value) {
+    interruptPlayback()
+    // 给打断一点传播时间
+    await new Promise(r => setTimeout(r, 100))
+  }
+
   window.speechSynthesis?.cancel()
   isPlayingAudio.value = false
   activeVoiceMessageId.value = null
   currentTranscript.value = ''
+
+  // 停止 VAD（用户已主动按下录音键）
+  stopAutoInterruptVAD()
+
+  // 方案0 (最高优先)：管线 WebSocket 模式 — 实时音频流式 ASR
+  if (practiceMode.value === 'pipeline' && configService.getConfig().enableAiPipeline) {
+    // 确保 pipeline WS 已连接
+    if (!pipelineWsConnected.value) {
+      await connectPipelineWebSocket()
+      if (!pipelineWsConnected.value) {
+        console.warn('[App] 管线 WS 连接失败，回退到其他方案')
+      } else {
+        // 连接 ASR 流式 WebSocket
+        await startPipelineAsrRecording()
+        return
+      }
+    } else {
+      await startPipelineAsrRecording()
+      return
+    }
+  }
 
   // 方案1：如果语音 AI 已连接，使用真实语音大模型（豆包 Realtime API）
   if (voiceAiReady.value && voiceConnected.value) {
@@ -537,6 +927,14 @@ const stopRecordingInstance = (instance: any) => {
 }
 
 const handleStopRecording = async () => {
+  // 方案0：管线 WebSocket 模式 — 停止 MediaRecorder
+  if (practiceMode.value === 'pipeline' && pipelineMediaRecorder && pipelineMediaRecorder.state !== 'inactive') {
+    isRecording.value = false
+    pipelineMediaRecorder.stop()
+    // onstop 回调中会处理后续 ASR + pipeline 提交
+    return
+  }
+
   // 方案1：使用语音大模型（豆包 Realtime API）
   if (voiceAiReady.value && voiceConnected.value) {
     await voiceService.stopRecording()
@@ -675,6 +1073,38 @@ const playTtsAudio = async (ttsUrl: string, messageId: string) => {
 }
 
 /**
+ * 使用 WebSocket 管线处理用户消息（流式 LLM + Token 级 TTS）
+ */
+const handlePipelineWsSubmit = async (text: string) => {
+  const config = configService.getConfig()
+
+  if (!currentSessionId.value) {
+    currentSessionId.value = 'pipeline-' + Date.now()
+  }
+
+  // 添加用户消息
+  const minutesAdded = messages.value.length + 1
+  const timeString = `10:${minutesAdded < 10 ? '0' + minutesAdded : minutesAdded}`
+  statusTime.value = timeString
+
+  const userMsg: DialectMessage = {
+    id: 'usr_' + Date.now(),
+    role: 'user',
+    text: text,
+    timestamp: timeString,
+  }
+  messages.value = [...messages.value, userMsg]
+
+  // AI 正在思考
+  isThinking.value = true
+
+  // 构建对话历史并发送到管线 WS
+  const history = buildConversationHistory()
+  console.log('[Pipeline] 发送用户输入, history:', history.length, '条')
+  pipelineAdapter.value?.sendUserInput(text, history)
+}
+
+/**
  * 使用 AI Pipeline（ASR→LLM→TTS）处理用户消息
  */
 const handleAiPipelineSubmit = async (text: string) => {
@@ -727,6 +1157,10 @@ const handleAiPipelineSubmit = async (text: string) => {
   const nextTimeMinutes = minutesAdded + 1
   const nextTimeString = `10:${nextTimeMinutes < 10 ? '0' + nextTimeMinutes : nextTimeMinutes}`
 
+  // 创建 AbortController 用于打断
+  const controller = new AbortController()
+  abortController.value = controller
+
   try {
     // 使用流式 API - GET 请求，query 参数传递
     const params = new URLSearchParams({
@@ -744,7 +1178,7 @@ const handleAiPipelineSubmit = async (text: string) => {
     const streamUrl = `${API_BASE_URL}/api/practice/chat/stream?${params}`
     console.log('[App] Stream request URL:', streamUrl)
 
-    const response = await fetch(streamUrl)
+    const response = await fetch(streamUrl, { signal: controller.signal })
     console.log('[App] Stream response status:', response.status, response.statusText)
 
     if (!response.ok) {
@@ -883,16 +1317,58 @@ const handleAiPipelineSubmit = async (text: string) => {
   }
 }
 
+// AbortController 用于取消 REST SSE 请求
+const abortController = ref<AbortController | null>(null)
+
+/**
+ * 打断 AI 播放/思考 — 全场景通用
+ * 用于打断按钮和自动 VAD 触发
+ */
+const interruptPlayback = () => {
+  if (practiceMode.value === 'realtime' && (voiceConnected.value || voiceAiReady.value)) {
+    // 端到端模式：通过语音服务打断
+    voiceService.interrupt()
+  } else if (practiceMode.value === 'pipeline') {
+    if (pipelineAdapter.value) {
+      // WebSocket 管线模式：通过专用 pipelineAdapter 打断
+      pipelineAdapter.value.interrupt()
+    } else if (voiceService.isPipelineMode) {
+      // 降级路径
+      voiceService.interrupt()
+    } else {
+      // REST SSE 模式：取消 fetch，停止所有播放
+      abortController.value?.abort()
+    }
+  }
+
+  // 通用清理
+  window.speechSynthesis?.cancel()
+  isPlayingAudio.value = false
+  activeVoiceMessageId.value = null
+  isThinking.value = false
+  isRecording.value = false
+
+  console.log('[App] 已打断 AI 播放')
+}
+
 const handleUserAnswerSubmit = async (text: string) => {
-  // 如果启用了 AI Pipeline 模式，走管线流程
-  if (configService.getConfig().enableAiPipeline) {
-    await handleAiPipelineSubmit(text)
+  // 端到端（实时语音）模式：使用语音大模型
+  if (practiceMode.value === 'realtime') {
+    if (voiceAiReady.value && voiceConnected.value) {
+      await sendTextToVoiceAI(text)
+      return
+    }
+  }
+
+  // 管线模式：走 WebSocket ASR-LLM-TTS 流程（优先）
+  if (practiceMode.value === 'pipeline' && pipelineWsConnected.value && pipelineAdapter.value) {
+    await handlePipelineWsSubmit(text)
     return
   }
 
-  // 如果语音大模型已连接，使用 sendTextToVoiceAI
-  if (voiceAiReady.value && voiceConnected.value) {
-    await sendTextToVoiceAI(text)
+  // 管线模式：REST SSE 回退
+  if (practiceMode.value === 'pipeline' && configService.getConfig().enableAiPipeline) {
+    await handleAiPipelineSubmit(text)
     return
   }
 
@@ -1019,19 +1495,18 @@ const handleResetScenario = async () => {
 }
 
 const handleSelectScenario = async (sc: Scenario) => {
-  // 如果使用语音大模型且已在连接中，先断开
-  if (shouldUseVoiceAI.value && voiceConnected.value && currentView.value === 'practice') {
+  // 如果已在连接中，先断开
+  if (voiceConnected.value) {
     disconnectVoiceAI()
   }
 
-  // 如果启用 API 模式，从后端获取完整场景数据
+  // 获取场景数据
   if (USE_API_MODE.value) {
     try {
       const fullScenario = await api.getScenarioById(sc.id)
       currentScenario.value = fullScenario
     } catch (error) {
       console.error('获取场景详情失败:', error)
-      // 回退到本地数据
       currentScenario.value = sc
     }
   } else {
@@ -1039,10 +1514,36 @@ const handleSelectScenario = async (sc: Scenario) => {
   }
   resetConversationForScenario(sc)
 
-  // 如果在练习模式且使用语音大模型，重新连接
-  if (shouldUseVoiceAI.value && currentView.value === 'practice') {
+  // 弹出模式选择窗口，而不是直接进入练习
+  showModeSelector.value = true
+}
+
+/**
+ * 用户选择了练习模式后的回调
+ */
+const handlePracticeModeSelect = async (mode: 'pipeline' | 'realtime') => {
+  showModeSelector.value = false
+  practiceMode.value = mode
+
+  // 切换到练习视图
+  currentView.value = 'practice'
+
+  // 端到端模式需要连接语音大模型
+  if (mode === 'realtime' && shouldUseVoiceAI.value) {
     await connectVoiceAI()
   }
+
+  // 创建后端会话
+  if (USE_API_MODE.value) {
+    try {
+      const conversation = await api.createConversation(currentScenario.value.id)
+      currentSessionId.value = conversation.sessionId
+    } catch (error) {
+      console.error('创建会话失败:', error)
+    }
+  }
+
+  await loadConversations()
 }
 
 const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary' | 'settings' | 'history') => {
@@ -1050,12 +1551,21 @@ const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary' | 'se
     isPlayingAudio.value = false
     activeVoiceMessageId.value = null
 
+    // 离开练习视图时断开管线 WS
+    if (currentView.value === 'practice' && view !== 'practice') {
+      disconnectPipelineWebSocket()
+    }
+
     // 先切换视图
     currentView.value = view
 
     // 切换到练习视图
     if (view === 'practice') {
-      // 连接语音大模型
+      // 管线模式：连接 WebSocket 管线
+      if (practiceMode.value === 'pipeline' && configService.getConfig().enableAiPipeline) {
+        connectPipelineWebSocket()
+      }
+      // 端到端模式：连接语音大模型
       if (shouldUseVoiceAI.value) {
         await connectVoiceAI()
       }
@@ -1082,6 +1592,9 @@ const handleViewChange = async (view: 'scenarios' | 'practice' | 'summary' | 'se
     if (view !== 'practice' && currentSessionId.value) {
       // 断开语音大模型
       disconnectVoiceAI()
+
+      // 停止 VAD
+      stopAutoInterruptVAD()
 
       // 结束后端会话
       try {
@@ -1227,6 +1740,281 @@ function disconnectVoiceAI() {
   pendingAiMessageId.value = null
 }
 
+// ==================== 管线 WebSocket 模式 ====================
+
+/**
+ * 设置管线 WebSocket 事件处理器
+ */
+function setupPipelineEventHandlers() {
+  const adapter = pipelineAdapter.value
+  if (!adapter) return
+
+  // Track the current streaming message ID
+  let currentStreamMsgId: string | null = null
+
+  adapter.on('transcript', (event: any) => {
+    if (event.role === 'ai') {
+      if (event.final && event.text) {
+        if (event.text === '[已打断]') return
+        // LLM 完成 — 更新或替换流式消息为最终消息
+        const minutesAdded = messages.value.length + 1
+        const timeString = `10:${minutesAdded < 10 ? '0' + minutesAdded : minutesAdded}`
+        statusTime.value = timeString
+
+        // 如果之前有流式消息，替换它
+        const streamIndex = messages.value.findIndex(m => m.id === currentStreamMsgId)
+        if (streamIndex !== -1) {
+          const updated = [...messages.value]
+          updated[streamIndex] = {
+            ...updated[streamIndex],
+            id: 'ai_' + Date.now(),
+            text: event.text,
+            showTranslation: subtitlesOn.value,
+          }
+          messages.value = updated
+        } else {
+          // 没有流式消息，新建
+          messages.value = [...messages.value, {
+            id: 'ai_' + Date.now(),
+            role: 'ai',
+            text: event.text,
+            timestamp: timeString,
+            showTranslation: subtitlesOn.value,
+          }]
+        }
+        currentStreamMsgId = null
+        isThinking.value = false
+      } else if (!event.final && event.text) {
+        // LLM token — 追加到流式消息（打字机效果）
+        if (currentStreamMsgId) {
+          // 已有流式消息，追加内容
+          const idx = messages.value.findIndex(m => m.id === currentStreamMsgId)
+          if (idx !== -1) {
+            messages.value[idx].text += event.text
+            messages.value = [...messages.value]
+          } else {
+            // 流式消息被删除了，新建
+            currentStreamMsgId = null
+          }
+        }
+
+        if (!currentStreamMsgId) {
+          // 创建新的流式消息
+          const minutesAdded = messages.value.length + 1
+          const timeString = `10:${minutesAdded < 10 ? '0' + minutesAdded : minutesAdded}`
+          const tempMsg: DialectMessage = {
+            id: 'ai_stream_' + Date.now(),
+            role: 'ai',
+            text: event.text,
+            timestamp: timeString,
+          }
+          currentStreamMsgId = tempMsg.id
+          messages.value = [...messages.value, tempMsg]
+        }
+        isThinking.value = false
+      }
+    } else if (event.role === 'user') {
+      if (isRealtimeMode.value) {
+        // ===== 实时对话模式：ASR 结果流式输出到用户对话框 =====
+        if (!realtimeAsrMsgId) {
+          // 没有占位消息时忽略（例如打断后）
+          currentTranscript.value = event.text || ''
+          return
+        }
+
+        const idx = messages.value.findIndex(m => m.id === realtimeAsrMsgId)
+        if (idx === -1) {
+          realtimeAsrMsgId = null
+          return
+        }
+
+        if (event.final) {
+          // 最终结果 → 更新消息 + 触发 LLM
+          const text = (event.text || '').trim()
+          const msgId = realtimeAsrMsgId
+          realtimeAsrMsgId = null
+          realtimeAsrPending = false
+
+          if (text.length > 2) {
+            messages.value[idx].text = text
+            messages.value = [...messages.value]
+            currentTranscript.value = ''
+            console.log('[Realtime] ASR 最终结果:', text)
+            // 直接触发 LLM 管线（不额外添加用户消息，已在对话中）
+            isThinking.value = true
+            const history = buildConversationHistory()
+            pipelineAdapter.value?.sendUserInput(text, history)
+            // ASR 完成后重启录音机（新 WebM 头），用户可随时说话打断 TTS
+            restartRealtimeRecorder()
+          } else {
+            // 识别为空 → 移除占位消息
+            console.warn('[Realtime] ASR 结果太短或为空，移除占位')
+            messages.value = messages.value.filter(m => m.id !== msgId)
+            isThinking.value = false
+            // 空结果也重启录音机，继续监听
+            restartRealtimeRecorder()
+          }
+        } else {
+          // 中间结果 → 追加文本
+          messages.value[idx].text = (messages.value[idx].text || '') + (event.text || '')
+          messages.value = [...messages.value]
+        }
+      } else {
+        // ===== 非实时模式（手动录音） =====
+        if (event.final && event.text) {
+          currentTranscript.value = ''
+          const text = event.text.trim()
+          if (text.length > 2) {
+            console.log('[Pipeline] ASR 识别结果:', text)
+            handleUserAnswerSubmit(text)
+          } else {
+            console.warn('[Pipeline] ASR 结果太短:', text)
+            alert('没有检测到清晰的语音，请重试或使用键盘输入！')
+            isThinking.value = false
+          }
+        } else if (!event.final && event.text) {
+          currentTranscript.value = event.text
+        }
+      }
+    }
+  })
+
+  adapter.on('audiostart', () => {
+    console.log('[Pipeline] TTS 音频开始播放')
+    isPlayingAudio.value = true
+    isThinking.value = false
+  })
+
+  adapter.on('audioend', () => {
+    console.log('[Pipeline] TTS 音频播放结束')
+    isPlayingAudio.value = false
+    activeVoiceMessageId.value = null
+  })
+
+  adapter.on('recordingstatechange', (recording: boolean) => {
+    isRecording.value = recording
+  })
+
+  adapter.on('error', (error: Error) => {
+    console.error('[Pipeline] 管线错误:', error.message)
+    isThinking.value = false
+  })
+
+  adapter.on('connected', () => {
+    pipelineWsConnected.value = true
+    console.log('[Pipeline] WS 连接成功')
+  })
+
+  adapter.on('disconnected', () => {
+    pipelineWsConnected.value = false
+    console.log('[Pipeline] WS 断开')
+  })
+}
+
+/**
+ * 连接管线 WebSocket
+ */
+async function connectPipelineWebSocket() {
+  if (pipelineWsConnected.value) return
+  if (pipelineAdapter.value) {
+    disconnectPipelineWebSocket()
+  }
+
+  const config = configService.getConfig()
+  const backendUrl = config.backendUrl || 'http://localhost:8080'
+
+  // 获取用户选中的 LLM 引擎对应的 API Key 和 Base URL
+  let llmApiKey = ''
+  let llmBaseUrl = ''
+  const llmEngine = config.pipelineLlmEngine || 'openai'
+  const llmModel = config.pipelineLlmModel || ''
+
+  switch (llmEngine) {
+    case 'deepseek':
+      llmApiKey = config.deepseekApiKey || ''
+      llmBaseUrl = 'https://api.deepseek.com/v1'
+      break
+    case 'glm':
+      llmApiKey = config.glmApiKey || ''
+      llmBaseUrl = config.glmApiUrl || 'https://open.bigmodel.cn/api/paas/v4'
+      break
+    case 'qianwen':
+      llmApiKey = config.qianwenApiKey || ''
+      llmBaseUrl = config.qianwenApiUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+      break
+    case 'doubao':
+      llmApiKey = config.apiKey || ''
+      llmBaseUrl = 'https://api.doubao.com/v1'
+      break
+    case 'openai':
+    default:
+      llmApiKey = config.apiKey || ''
+      llmBaseUrl = 'https://api.openai.com/v1'
+      break
+  }
+
+  const adapter = new PipelineWebSocketAdapter({
+    apiKey: llmApiKey,
+    appId: '',
+    modelProvider: 'pipeline',
+    backendUrl,
+    sampleRate: 16000,
+    audioChunkSize: 100,
+    audioInputDeviceId: config.audioInputDeviceId || '',
+    vadEnabled: false,
+    vadThreshold: 0.5,
+    vadSilenceDuration: 800,
+    modelConfig: {
+      llmEngine,
+      llmModel,
+      llmApiKey,
+      llmBaseUrl
+    }
+  })
+
+  pipelineAdapter.value = adapter
+  setupPipelineEventHandlers()
+
+  try {
+    await adapter.connect(currentScenario.value)
+    pipelineWsConnected.value = true
+    console.log('[Pipeline] 连接成功, engine=', llmEngine, 'model=', llmModel)
+  } catch (err: any) {
+    pipelineWsConnected.value = false
+    console.error('[Pipeline] 连接失败:', err.message)
+  }
+}
+
+/**
+ * 断开管线 WebSocket
+ */
+function disconnectPipelineWebSocket() {
+  if (pipelineAdapter.value) {
+    pipelineAdapter.value.disconnect()
+    pipelineAdapter.value = null
+  }
+  pipelineWsConnected.value = false
+  pipelineMediaRecorder = null
+  pipelineMediaStream = null
+  pipelineAudioChunks = []
+  asrWebSocket = null
+}
+
+/**
+ * 从当前消息列表构建对话历史
+ */
+function buildConversationHistory(): Array<{role: string; content: string}> {
+  const history: Array<{role: string; content: string}> = []
+  for (const msg of messages.value) {
+    if (msg.role === 'user') {
+      history.push({ role: 'user', content: msg.text })
+    } else if (msg.role === 'ai') {
+      history.push({ role: 'assistant', content: msg.text })
+    }
+  }
+  return history
+}
+
 /**
  * 使用语音大模型发送文本消息（键盘输入模式）
  * 键盘模式回退到浏览器 TTS/模拟响应
@@ -1250,33 +2038,34 @@ async function sendTextToVoiceAI(text: string) {
   // AI 正在思考
   isThinking.value = true
 
-  // 键盘模式下，通过模拟获取 AI 回复（语音 AI 主要支持语音输入）
-  // 后续可扩展为通过 REST API 发送文本到 AI
-  setTimeout(() => {
-    isThinking.value = false
-
-    const nextIndex = currentQuestionIndex.value + 1
-    const isFinish = nextIndex > currentScenario.value.questions.length
-
-    let aiResponseText = isFinish
-      ? "Congratulations! You have completed all of the active interactive prompts in this scenario. Let's transition to your performance summary."
-      : currentScenario.value.questions[nextIndex - 1]?.text || ''
-
-    const aiMsg: DialectMessage = {
-      id: 'ai_' + Date.now(),
-      role: 'ai',
-      text: aiResponseText,
-      timestamp: `10:${(minutesAdded + 1) < 10 ? '0' + (minutesAdded + 1) : (minutesAdded + 1)}`,
-      showTranslation: subtitlesOn.value
-    }
-    messages.value = [...messages.value, aiMsg]
-    currentQuestionIndex.value = nextIndex
-  }, 2000)
-}
-
-// 组件销毁时断开连接
+  // 键盘模式下通过管线 LLM 获取 AI 回复（语音 AI 主要支持语音输入）
+  // 这里复用管线流程获得真实的 LLM 响应
+  if (configService.getConfig().enableAiPipeline) {
+    await handleAiPipelineSubmit(text)
+  } else {
+    // 无管线配置时，使用模拟响应
+    setTimeout(() => {
+      isThinking.value = false
+      const nextIndex = currentQuestionIndex.value + 1
+      const isFinish = nextIndex > currentScenario.value.questions.length
+      let aiResponseText = isFinish
+        ? 'Congratulations! You have completed all of the active interactive prompts in this scenario. Let\'s transition to your performance summary.'
+        : currentScenario.value.questions[nextIndex - 1]?.text || ''
+      const aiMsg: DialectMessage = {
+        id: 'ai_' + Date.now(),
+        role: 'ai',
+        text: aiResponseText,
+        timestamp: `10:${(minutesAdded + 1) < 10 ? '0' + (minutesAdded + 1) : (minutesAdded + 1)}`,
+        showTranslation: subtitlesOn.value
+      }
+      messages.value = [...messages.value, aiMsg]
+      currentQuestionIndex.value = nextIndex
+    }, 2000)
+  }
+}// 组件销毁时断开连接
 onUnmounted(() => {
   disconnectVoiceAI()
+  disconnectPipelineWebSocket()
 })
 
 
@@ -1372,7 +2161,7 @@ onUnmounted(() => {
         />
 
         <template v-else-if="currentView === 'practice'">
-        <div class="flex-1 flex" style="height: calc(100vh - 4rem)">
+        <div class="flex-1 flex overflow-hidden" style="height: calc(100vh - 4rem)">
           <!-- 左侧历史对话边栏 -->
           <ConversationSidebar
             :conversations="conversationsList"
@@ -1385,7 +2174,7 @@ onUnmounted(() => {
           />
 
           <!-- 右侧主内容区域 -->
-          <div class="flex-1 flex flex-col min-w-0">
+          <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
             <!-- 固定顶部状态栏（不随聊天滚动） -->
             <div class="flex-none px-5 md:px-12 pt-4 pb-2 flex items-center justify-between bg-gradient-to-b from-[#f7fbfa] to-transparent z-10">
               <div class="flex items-center gap-2">
@@ -1444,6 +2233,9 @@ onUnmounted(() => {
                 :current-transcript="currentTranscript"
                 :audio-devices="audioDevices"
                 :selected-audio-device-id="selectedAudioDeviceId"
+                :is-ai-speaking="isPlayingAudio || isThinking"
+                :is-voice-connecting="voiceConnecting"
+                :is-realtime-mode="isRealtimeMode"
                 @start-recording="startRecording"
                 @stop-recording="handleStopRecording"
                 @toggle-typing-mode="isTypingMode = !isTypingMode"
@@ -1451,6 +2243,8 @@ onUnmounted(() => {
                 @send-text="handleUserAnswerSubmit"
                 @open-rating-modal="ratingOpen = true"
                 @change-audio-device="handleChangeAudioDevice"
+                @interrupt="interruptPlayback"
+                @toggle-realtime-mode="toggleRealtimeMode"
               />
             </div>
           </div>
@@ -1502,6 +2296,14 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+
+      <!-- 模式选择弹窗 -->
+      <PracticeModeModal
+        v-if='showModeSelector'
+        :scenario='currentScenario'
+        @select-mode='handlePracticeModeSelect'
+        @close='showModeSelector = false'
+      />
     </template>
   </div>
 </template>
