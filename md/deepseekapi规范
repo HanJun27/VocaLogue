@@ -1,0 +1,322 @@
+AI口语陪练同传助手剧本工具含金量分析
+链条减重差距分析
+LingoAI多平台介绍
+简历项目经历撰写提示
+程序员工作量化项目
+轻量级图片理解模型推荐
+Docker VSCode Spring Boot NestJS 开发指南
+禅道风格前端设计提示词
+运动
+模型ID含义解释
+大模型API Token计算详解
+分布式计算任务分片连贯性
+舆论监测系统全面解析
+命理男性特点分析
+SpringBoot打包exe指南
+男性命理特点分析
+歌词
+二手电子琴选购推荐
+Spring AI与传统Spring Boot架构对比
+紫微斗数命理分析
+物联网竞赛
+yolo视觉
+YOLO空间识别能力解析
+理光GX8复古CCD水平分析
+自适应排序算法解释
+死了么App开发公司
+公路车前高后低轮组解析
+政策分析
+对话记忆依赖本地算法
+软考22
+擦伤防疤处理指南
+软考33
+UML全称解释
+痘痘贴原理与使用
+小鲸鱼
+病娇
+观察者模式代码讲解
+无向连通图概念辨析
+软考11
+软考n皇后问题理解
+双Agent校验方案优劣分析
+不平衡不充分发展问题出处
+骑行心率偏高分析
+高锰酸钾管制规定
+软考笔试题重合分析
+VSCode文件目录快速访问方法
+江苏省大数据中心岗位咨询
+改革开放时代局限与伟大
+隼字自行车队名称建议
+软考证书就业帮助分析
+Spring上下文声明解释
+CS2游戏雷达辅助项目介绍
+智谱API兼容OpenAI但有差异
+虚拟机网络连接故障排查
+江苏软考时间安排
+运动软件导入fit文件
+GitHub修改项目描述方法
+vibecoding skills自动化完善理念
+自然语言转数据库查询工具名称
+TSX转HTML区别与转换
+色彩影响心情
+平均速度计算说明
+商标国际分类含义
+内心框架命名建议
+日语短语英译咨询
+后端学习就业方向框架
+长期稳定电脑配置指南
+西数WD10EZEX硬盘介绍
+Pico3耳机麦克风切换问题解决
+代理功能配置使用指南
+马克吐温情书经典内容
+直升机抗风电子操控系统
+缺爱者迁就行为心理分析
+火六牙盘重量查询
+敬畏与认知学神秘学
+AI Agent记忆存储实现方案
+晒黑后美白补救方法
+白起对线夏侯惇攻略
+虚拟机CDDVD灰色解决
+旋转枪口原理与优缺点
+通灵桥村故事创作
+司空震对线橘右京技巧
+公路车中轴小孔用途
+家酿米酒操作指南
+计算机专业英语PPT资源推荐
+PlantUML插件图表支持
+技术部退出回复建议
+Ubuntu查看文件命令
+支付宝刷脸认证失败原因
+荣耀应用商店上架指南
+GitHub私有仓库邀请协作者
+时光胶囊引语创作
+Android Studio USB调试手机
+163邮箱SMTP端口配置
+论文含金量与作者排序解析
+agent职业规划
+内存占用高排查方法
+软著源码合并单文件提交
+Hyper-V Server ISO获取
+YOLO模型测试工具推荐
+AI口语陪练同传助手剧本工具含金量分析
+
+用户需要DeepSeek API的接口说明，以便解决前端连接测试失败的问题，并想查看官方文档。我需要提供API的基础信息、认证方式、关键参数、常见错误排查以及文档链接。为了全面获取信息，我需要同时进行多项搜索，涵盖API文档、认证方式、常见错误以及前端接入问题。
+搜索到 42 个网页
+
+搜索结果显示了一些相关的文档页面。为了全面获取信息，我们需要同时打开这些页面。
+浏览 8 个页面
+首次调用 API | DeepSeek API Docs
+JSON Output | DeepSeek API Docs
+对话补全 | DeepSeek API Docs
+错误码 | DeepSeek API Docs
+Error Codes | DeepSeek API Docs
+查看全部
+
+这些资料提供了DeepSeek API的详细信息。用户提到“apikey没有任何问题”，但测试连接失败。可能的原因包括跨域问题、模型名称错误、请求格式问题或网络问题。我的回答将涵盖API基础信息、认证方式、常见错误排查以及解决跨域问题的配置示例。
+
+DeepSeek API支持网页直接调用，但不能在前端代码里用你的API Key发请求。这样做有两大风险：
+
+    🚨 API Key 暴露风险：API Key 会直接暴露在网页源码中，任何人都能复制滥用，导致你的账户被盗刷。
+
+    💥 跨域请求（CORS）错误：浏览器会因安全策略阻止前端直接请求，导致请求失败。
+
+所以，测试连接通常需要在服务端进行。下面的测试方法、接口规范及解决方案供你参考：
+🐍 服务端测试脚本 (Python)
+
+你可以先创建一个 .py 文件，复制下面的代码，将 YOUR_API_KEY 替换为你的真实 Key，然后在终端中运行：python test_deepseek.py：
+python
+
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="YOUR_API_KEY",
+    base_url="https://api.deepseek.com",
+)
+
+response = client.chat.completions.create(
+    model="deepseek-v4-pro",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant"},
+        {"role": "user", "content": "Hello"},
+    ],
+    stream=False
+)
+
+print(response.choices[0].message.content)
+
+📡 核心接口规范
+配置项	说明
+API Endpoint	https://api.deepseek.com/chat/completions
+认证方式	HTTP Headers 中添加 Authorization: Bearer YOUR_API_KEY
+请求方法	POST
+内容类型	Content-Type: application/json
+参数详情
+
+以下是请求体中的关键参数，供你为前端封装调用时参考：
+参数	类型	说明
+model	string, 必填	使用的模型ID，最新推荐使用 deepseek-v4-pro 或 deepseek-v4-flash
+messages	object[], 必填	对话消息列表，包含 role（如 "system", "user"）和 content
+thinking	object, 可选	是否开启模型的思考过程，例如 {"type": "enabled"}
+stream	boolean, 可选	是否启用流式输出。设为 true 可实现打字机效果
+max_tokens	integer, 可选	模型生成补全的最大token数
+temperature	float, 可选	控制生成随机性，范围 0-2，推荐 1
+top_p	float, 可选	核采样阈值，范围 0-1，推荐 1
+🧾 状态码速查
+
+如果调用遇到错误，可以根据返回的状态码快速定位问题：
+
+    401 (Authentication Fails)：认证失败。最常见的错误，请检查你的 API Key 是否正确。
+
+    402 (Insufficient Balance)：账户余额不足。请前往平台充值。
+
+    422 (Invalid Parameters)：请求参数错误。请检查请求体的格式是否符合规范。
+
+    429 (Rate Limit Reached)：请求频率过高。触发限流了，请适当降低请求频率。
+
+    503 (Service Overloaded)：服务器繁忙。通常是由于使用人数过多导致的，稍后重试即可。
+
+🚧 前端调用解决方案
+
+为了解决前端调用的安全与跨域问题，这里有两种标准方案：
+
+    方案一：服务端代理 (推荐)
+    这是最安全、最标准的做法。让你的前端请求你自己的后端服务，由你的后端服务（比如 Spring Boot）携带 API Key 去请求 DeepSeek API。这就好比把钥匙放在家里，客人来了让管家（后端）开门，而不是直接把钥匙挂在门上。具体到你的项目，可以在 Spring Boot 中创建一个 /api/deepseek/chat 接口来转发请求。
+
+    方案二：开发环境代理 (仅用于本地调试)
+    这是一个仅用于本地开发的临时方法。如果你用的是 Vue，可以在 vue.config.js 文件中配置代理，将所有以 /api 开头的请求转发到 https://api.deepseek.com。这种方法只是开发时的“权宜之计”，上线后依然存在安全风险，所以不推荐在生产环境使用。
+
+建议先试试 Python 脚本做基础连通性测试。如果本地测试通过，前端依然报错（比如跨域问题），我们可以再看具体报错信息来分析。
+写一个有关deepseek的llm接入规范性文档，我将转交给agent让他检查deepseek相关的配置是否搞错
+
+用户需要一份关于DeepSeek LLM接入的规范性文档，以便Agent检查配置错误。文档需要涵盖连接配置、调用规范、错误处理和最佳实践。这几个方面内容不同，分开搜索能更全面地获取信息。
+搜索到 75 个网页
+
+搜索结果很丰富，涵盖了官方文档、实践指南和常见错误分析。为了获取详细的配置要求和参数说明，需要打开这些相关的页面来提取具体信息。
+浏览 12 个页面
+限速与隔离 | DeepSeek API Docs
+对话补全 | DeepSeek API Docs
+DeepSeek API 集成全攻略：从基础到高阶的实践指南
+DeepSeek-V3 API全流程接入指南：从入门到实战（兼容OpenAI）
+深度解析：调用DeepSeek API的全流程实践指南
+查看全部
+
+搜索结果提供了DeepSeek API的配置要求、认证规范和常见错误信息。用户明确要求写一份规范性文档供Agent检查配置，需要聚焦于连接性检查和参数验证。回答将围绕配置清单、连接测试和故障排查来组织，重点放在Base URL、API Key、模型名称和参数这几个关键点上。
+
+以下是可以直接交给 Agent 进行配置检查的规范性文档。建议让 Agent 将现有配置与下文逐项比对。
+DeepSeek LLM 接入配置自查规范
+一、基础连接配置（必查项）
+
+    Base URL 配置
+
+        OpenAI 兼容格式访问时，Base URL 必须设置为 https://api.deepseek.com，这是 DeepSeek API 的基础地址。出于与 OpenAI 兼容考虑，也可设置为 https://api.deepseek.com/v1。
+
+        模型能力已在最新V4版本全面升级，推荐使用新版本模型
+
+        v1 只是路径标识，与模型版本无关。
+
+    API Key 认证
+
+        采用 Bearer Token 认证方式，请求头必须包含 Authorization: Bearer <YOUR_API_KEY>。
+
+        密钥应通过环境变量（如 DEEPSEEK_API_KEY）传递，避免硬编码在前端代码或公开仓库中。
+
+        API Key 需在 DeepSeek 开发者平台创建，并按项目维度管理。
+
+    API Endpoint
+
+        对话补全接口：POST https://api.deepseek.com/chat/completions
+
+        支持 HTTPS 加密传输。
+
+二、请求参数规范（必查项）
+
+    模型名称（model）
+
+        推荐使用最新推荐模型 deepseek-v4-pro 或 deepseek-v4-flash：
+
+            deepseek-v4-pro：Pro 版本，并发限制为 500；适合需要高质量回复的场景
+
+            deepseek-v4-flash：Flash 版本，并发限制为 2500；追求更高吞吐和更低延迟的场景
+
+        注意：旧版 deepseek-chat 和 deepseek-reasoner 将于 2026 年 7 月 24 日 正式下线，建议尽快迁移。
+
+        目前它们仍可作为兼容别名使用：deepseek-chat 映射到 deepseek-v4-flash 的非思考模式，deepseek-reasoner 映射到思考模式。
+
+    messages 格式
+
+        必须为对象数组，每个对象包含 role（system/user/assistant）和 content 字段。
+
+    可选参数推荐值
+
+        temperature：推荐 1.0 左右，DeepSeek 模型可使用较高温度值
+
+        max_tokens：根据实际需求设置，参考模型上下文长度（1M tokens）和官方取值范围。
+
+        stream：需要流式输出时设置为 true
+
+    user_id 隔离（推荐配置）
+
+        可用于区分业务侧用户身份，进行内容安全处理、KVCache 缓存隔离和调度隔离
+
+        字符集限制：[a-zA-Z0-9\-_]，最大长度 512
+
+        使用 OpenAI SDK 时，需将 user_id 放入 extra_body 参数中
+
+    思考模式（thinking mode）
+
+        思考模式默认开启，模型会在输出最终答案前输出链式推理过程
+
+        思考模式开关：{"thinking": {"type": "enabled/disabled"}}
+
+        推理强度控制：reasoning_effort: "high" 或 "max"
+
+        思考模式下不支持 temperature、top_p 等参数
+
+三、错误码速查表
+HTTP 状态码	含义	排查方向
+200	请求成功	正常
+400	参数错误	检查 JSON 格式、字段名拼写、嵌套结构是否符合规范
+401	认证失败	检查 Authorization 头是否存在、API Key 是否正确/未过期
+402	账户余额不足	检查账户余额
+429	请求频率超限/超并发	检查请求频率是否超过配额，或并发数超过模型限制（Pro 限 500，Flash 限 2500）
+503/504	服务繁忙/超时	检查网络连通性（ping api.deepseek.com），稍后重试
+四、连通性验证步骤
+
+请按以下顺序逐一确认，并标记 ✅/❌：
+
+    确认 Base URL 配置为 https://api.deepseek.com ✅/❌
+
+    确认 API Key 有效且未过期 ✅/❌
+
+    确认请求参数 model 使用了正确的模型名称（deepseek-v4-pro 或 deepseek-v4-flash，或兼容别名） ✅/❌
+
+    确认使用 POST 方法，Content-Type 为 application/json ✅/❌
+
+    尝试发送最简单的单轮对话请求验证连通性：
+    json
+
+    {
+      "model": "deepseek-v4-pro",
+      "messages": [{"role": "user", "content": "Hi"}],
+      "max_tokens": 50
+    }
+
+    预期返回：choices 数组包含模型回复内容 ✅/❌
+
+    确认 API Key 未因 IP 白名单限制而被拦截 ✅/❌
+
+    确认网络环境可正常访问 api.deepseek.com:443（检查防火墙/代理设置） ✅/❌
+
+    如使用流式输出，确认已正确处理 SSE 格式数据和 data: [DONE] 结束标记 ✅/❌
+
+五、常见配置错误及排查
+错误现象	可能原因	排查方法
+连接失败/无法访问	Base URL 配置错误	检查是否包含多余路径（如 /v1 可以，但 /chat/completions 不应出现在 Base URL 中）
+返回 401 Unauthorized	API Key 错误或未配置	检查环境变量名称是否正确，Key 是否包含空格，是否已过期
+返回 400 Bad Request	请求参数格式错误	检查 JSON 结构，确认 messages 数组不为空，必填字段齐全
+返回 429 Too Many Requests	并发超限或调用频率过高	检查并发数是否超过模型限制，可提交扩容申请工单
+模型返回空或报错	模型名称不正确	检查 model 参数是否使用了正确的名称
+流式输出不工作	stream 参数未设置或未正确解析	确认请求中 stream: true，响应按 SSE 格式解析
+接口调用正常但无响应	网络超时	检查网络稳定性，增加超时时间配置
+跨域请求（CORS）错误	在前端直接调用 API	不要在浏览器端直接调用，应通过后端服务代理
