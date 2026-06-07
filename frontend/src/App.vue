@@ -309,6 +309,40 @@ const resetConversationForScenario = (sc: Scenario) => {
   }
 }
 
+/**
+ * 重新练习：重置状态 + 创建新会话
+ */
+const handleRestartPractice = async () => {
+  resetConversationForScenario(currentScenario.value)
+  currentView.value = 'practice'
+  currentSummaryResult.value = null
+
+  // 创建新后端会话
+  if (USE_API_MODE.value) {
+    try {
+      const llmConfig = resolveLlmPipelineConfig()
+      const conversation = await api.createConversation(currentScenario.value.id, undefined, {
+        useAsr: false,
+        useTts: false,
+        llmEngine: llmConfig.llmEngine,
+        llmModel: llmConfig.llmModel,
+        llmApiKey: llmConfig.llmApiKey,
+        llmBaseUrl: llmConfig.llmBaseUrl,
+        llmTemperature: 0.7,
+        ttsEngine: 'openai',
+        ttsModel: 'tts-1',
+        ttsVoice: 'alloy'
+      })
+      currentSessionId.value = conversation.sessionId
+      console.log('重新练习，新会话ID:', conversation.sessionId)
+    } catch (error) {
+      console.error('创建新会话失败:', error)
+    }
+  }
+
+  await loadConversations()
+}
+
 const speakAudio = (text: string, messageId: string) => {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel()
@@ -2373,7 +2407,7 @@ onUnmounted(() => {
         }"
         :summary-result="currentSummaryResult"
         :messages="messages"
-        @restart-practice="() => { resetConversationForScenario(currentScenario); currentView = 'practice' }"
+        @restart-practice="handleRestartPractice"
         @go-back-to-scenarios="handleViewChange('scenarios')"
       />
       </main>
