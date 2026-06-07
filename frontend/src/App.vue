@@ -344,6 +344,8 @@ const handleRestartPractice = async () => {
 }
 
 const speakAudio = (text: string, messageId: string) => {
+  // 清洗 TTS 朗读文本中的特殊字符
+  const cleanText = text.replace(/\*/g, '')
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel()
 
@@ -353,7 +355,7 @@ const speakAudio = (text: string, messageId: string) => {
       return
     }
 
-    const utterance = new SpeechSynthesisUtterance(text)
+    const utterance = new SpeechSynthesisUtterance(cleanText)
     utterance.lang = 'en-US'
     utterance.rate = 0.95
 
@@ -382,6 +384,8 @@ const speakAudio = (text: string, messageId: string) => {
  * 使用本地 TTS 服务（Piper/Edge-TTS）播放语音
  */
 const playLocalTtsAudio = async (text: string, messageId: string) => {
+  // 清洗 TTS 朗读文本中的特殊字符
+  const cleanText = text.replace(/\*/g, '')
   const cfg = configService.getConfig()
   const baseUrl = cfg.localTtsBaseUrl || 'http://localhost:8000'
   const engine = cfg.pipelineTtsEngine === 'edge-tts' ? 'edge-tts' : 'piper'
@@ -401,7 +405,7 @@ const playLocalTtsAudio = async (text: string, messageId: string) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        text,
+        text: cleanText,
         engine,
         voice,
         speed,
@@ -1254,6 +1258,18 @@ const handleAiPipelineSubmit = async (text: string) => {
   }
   messages.value = [...messages.value, userMsg]
 
+  // 持久化：保存用户消息到后端数据库
+  if (USE_API_MODE.value && currentSessionId.value) {
+    api.saveMessage(
+      currentSessionId.value,
+      text,
+      false,
+      undefined,
+      undefined,
+      'user'
+    ).catch(err => console.error('[SSE] 保存用户消息失败:', err))
+  }
+
   // 根据引擎获取对应的 API Key 和 Base URL
   let apiKey = config.apiKey;
   let baseUrl = '';
@@ -1425,6 +1441,18 @@ const handleAiPipelineSubmit = async (text: string) => {
         messages.value[msgIdx].translation = translation
         messages.value = [...messages.value]
       }
+    }
+
+    // 持久化：保存 AI 回复到后端数据库
+    if (USE_API_MODE.value && currentSessionId.value && cleanText) {
+      api.saveMessage(
+        currentSessionId.value,
+        cleanText,
+        false,
+        undefined,
+        undefined,
+        'assistant'
+      ).catch(err => console.error('[SSE] 保存AI消息失败:', err))
     }
 
     // 流式响应完成后，自动使用 TTS 朗读 AI 回复
