@@ -1431,16 +1431,15 @@ const handleAiPipelineSubmit = async (text: string) => {
       }
     }
 
-    // 拆分英文和中文翻译（LLM 按要求返回的 "英文|||中文" 格式）
+    // 拆分英文和中文翻译（LLM 按要求返回的 "英文|||中文" 格式），始终应用到消息
     const { text: cleanText, translation } = splitTextAndTranslation(fullText)
-    if (translation) {
-      // 更新消息，拆分为 text 和 translation
-      const msgIdx = messages.value.findIndex(m => m.id === aiMsgId)
-      if (msgIdx !== -1) {
-        messages.value[msgIdx].text = cleanText
+    const msgIdx = messages.value.findIndex(m => m.id === aiMsgId)
+    if (msgIdx !== -1) {
+      messages.value[msgIdx].text = cleanText
+      if (translation) {
         messages.value[msgIdx].translation = translation
-        messages.value = [...messages.value]
       }
+      messages.value = [...messages.value]
     }
 
     // 持久化：保存 AI 回复到后端数据库
@@ -2245,13 +2244,15 @@ function buildConversationHistory(): Array<{role: string; content: string}> {
  * 否则返回 { text, translation: undefined }
  */
 function splitTextAndTranslation(raw: string): { text: string; translation?: string } {
-  const idx = raw.indexOf('|||')
+  // 先清洗 Markdown 标记字符（* # ` _ ~ 等），避免 TTS 朗读或 UI 显示乱码
+  const cleaned = raw.replace(/[*#_~`]/g, '')
+  const idx = cleaned.indexOf('|||')
   if (idx !== -1) {
-    const text = raw.substring(0, idx).trim()
-    const translation = raw.substring(idx + 3).trim()
+    const text = cleaned.substring(0, idx).trim()
+    const translation = cleaned.substring(idx + 3).trim()
     return { text, translation: translation || undefined }
   }
-  return { text: raw }
+  return { text: cleaned }
 }
 
 /**
