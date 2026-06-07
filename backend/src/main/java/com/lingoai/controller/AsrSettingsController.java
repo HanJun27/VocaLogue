@@ -45,7 +45,13 @@ public class AsrSettingsController {
      */
     @PostMapping("/update")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateSettings(@RequestBody Map<String, Object> settings) {
-        String modelName = (String) settings.getOrDefault("model", "large-v2");
+        // 不传入 model 时保持当前模型（不硬编码默认 large-v2）
+        String modelName;
+        if (settings.containsKey("model") && settings.get("model") != null) {
+            modelName = (String) settings.get("model");
+        } else {
+            modelName = null; // 让 gRPC 客户端获取当前模型
+        }
         String device = (String) settings.getOrDefault("device", "cuda");
         int computeType = settings.containsKey("computeType") ? ((Number) settings.get("computeType")).intValue() : 2;
         boolean enableVad = (boolean) settings.getOrDefault("enableVad", true);

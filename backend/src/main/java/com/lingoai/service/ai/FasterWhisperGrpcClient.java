@@ -197,7 +197,7 @@ public class FasterWhisperGrpcClient {
         }
 
         AsrServiceProto.AsrSettings request = AsrServiceProto.AsrSettings.newBuilder()
-                .setModelName(modelName)
+                .setModelName(modelName != null ? modelName : "")
                 .setDevice(device)
                 .setComputeType(computeType)
                 .setEnableVad(enableVad)
