@@ -2,6 +2,13 @@
 
 **AI 驱动的英语口语陪练平台** — 通过真实场景对话、实时语音识别、发音评测与 AI 智能反馈，帮助用户高效提升英语口语能力。
 
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Vue.js](https://img.shields.io/badge/Vue.js-3.x-4FC08D.svg)](https://vuejs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg)](https://www.postgresql.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> 🎬 **Demo 演示**: [VocaLogue-Lingoai 演示 demo（基于 ASR+LLM+TTS 管道 + 端到端云端大模型实现）](https://www.bilibili.com/video/BV1mcEh6mEu8/?share_source=copy_web&vd_source=d3b20fbc9cf74d8cbbabaf9c21ec7e43)
+
 ---
 
 ## 项目概述
