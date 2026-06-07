@@ -447,11 +447,13 @@ const playLocalTtsAudio = async (text: string, messageId: string) => {
  * 根据当前配置选择合适的 TTS 播放方式（手动点击喇叭按钮时调用）
  */
 const handleManualSpeak = (text: string, messageId: string) => {
+  // 清理 TTS 朗读中的特殊字符（如 * 号会被朗读为 "star"）
+  const cleanText = text.replace(/\*/g, '')
   const cfg = configService.getConfig()
   if (cfg.enableAiPipeline && (cfg.pipelineTtsEngine === 'piper' || cfg.pipelineTtsEngine === 'edge-tts')) {
-    playLocalTtsAudio(text, messageId)
+    playLocalTtsAudio(cleanText, messageId)
   } else {
-    speakAudio(text, messageId)
+    speakAudio(cleanText, messageId)
   }
 }
 
