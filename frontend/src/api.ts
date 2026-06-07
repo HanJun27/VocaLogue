@@ -371,14 +371,15 @@ export const api = {
     model?: string;
     enableVad?: boolean;
   }): Promise<void> {
+    const body: Record<string, any> = {
+      device: settings.device,
+    }
+    if (settings.model) body.model = settings.model
+    if (settings.enableVad !== undefined) body.enableVad = settings.enableVad
     const response = await fetch(`${API_BASE_URL}/api/asr/settings/update`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({
-        device: settings.device,
-        model: settings.model || 'large-v2',
-        enableVad: settings.enableVad ?? true,
-      }),
+      body: JSON.stringify(body),
     })
     const result: ApiResponse<null> = await response.json()
     if (result.code !== 200) throw new Error(result.message)

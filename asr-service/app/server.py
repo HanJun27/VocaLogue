@@ -44,7 +44,7 @@ class S(asr_service_pb2_grpc.FasterWhisperASRServicer):
         运行时更新 ASR 设置（模型、设备、VAD 等）
         会重新加载模型到新设备，耗时 5-60 秒
         """
-        model_name = request.model_name or "large-v2"
+        model_name = request.model_name or (self.engine.model_name if self.engine else "large-v2")
         device = request.device or "cpu"
         compute_type = ["int8", "float16", "int8_float16", "float32"][request.compute_type] if request.compute_type <= 3 else "int8_float16"
         download_root = os.environ.get("ASR_DOWNLOAD_ROOT", "./models")
