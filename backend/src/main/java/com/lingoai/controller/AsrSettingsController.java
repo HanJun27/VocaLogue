@@ -53,7 +53,11 @@ public class AsrSettingsController {
             modelName = null; // 让 gRPC 客户端获取当前模型
         }
         String device = (String) settings.getOrDefault("device", "cuda");
-        int computeType = settings.containsKey("computeType") ? ((Number) settings.get("computeType")).intValue() : 2;
+        // 不传入 computeType 时保持当前配置（避免 GPU 下从 int8 切到 int8_float16 报错）
+        int computeType = -1;
+        if (settings.containsKey("computeType")) {
+            computeType = ((Number) settings.get("computeType")).intValue();
+        }
         boolean enableVad = (boolean) settings.getOrDefault("enableVad", true);
         int vadThresholdMs = settings.containsKey("vadThresholdMs") ? ((Number) settings.get("vadThresholdMs")).intValue() : 500;
         int windowSizeMs = settings.containsKey("windowSizeMs") ? ((Number) settings.get("windowSizeMs")).intValue() : 500;

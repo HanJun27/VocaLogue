@@ -607,16 +607,21 @@ function checkRealtimeVad(): void {
  *  3. 启动 AnalyserNode VAD
  *  4. VAD 检测静音 → 自动 ASR → LLM → 继续录音
  */
+/** 上次同步到 ASR 服务的设备，避免反复 UpdateSettings 阻塞 30s */
+let lastAsrDevice: string | null = null
+
 async function startRealtimeConversation(): Promise<void> {
-  // 同步 ASR GPU 设置到后端
-  try {
-    const cfg = configService.getConfig()
-    await api.updateAsrSettings({
-      device: cfg.asrGpuEnabled ? 'cuda' : 'cpu',
-    })
-    console.log('[Realtime] ASR 设备已应用:', cfg.asrGpuEnabled ? 'cuda' : 'cpu')
-  } catch (e) {
-    console.warn('[Realtime] ASR 设置同步失败（使用当前设备）:', e)
+  // 只在设备变化时才同步 ASR 设置（避免反复阻塞 30s）
+  const cfg = configService.getConfig()
+  const targetDevice = cfg.asrGpuEnabled ? 'cuda' : 'cpu'
+  if (targetDevice !== lastAsrDevice) {
+    try {
+      await api.updateAsrSettings({ device: targetDevice })
+      console.log('[Realtime] ASR 设备已应用:', targetDevice)
+      lastAsrDevice = targetDevice
+    } catch (e) {
+      console.warn('[Realtime] ASR 设置同步失败（使用当前设备）:', e)
+    }
   }
 
   // 确保管线 WS 已连接

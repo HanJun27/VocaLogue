@@ -46,7 +46,11 @@ class S(asr_service_pb2_grpc.FasterWhisperASRServicer):
         """
         model_name = request.model_name or (self.engine.model_name if self.engine else "large-v2")
         device = request.device or "cpu"
-        compute_type = ["int8", "float16", "int8_float16", "float32"][request.compute_type] if request.compute_type <= 3 else "int8_float16"
+        # -1 表示保持当前 compute_type（前端只切换 device 时不改变）
+        if request.compute_type >= 0:
+            compute_type = ["int8", "float16", "int8_float16", "float32"][request.compute_type]
+        else:
+            compute_type = self.engine.compute_type if self.engine else "int8_float16"
         download_root = os.environ.get("ASR_DOWNLOAD_ROOT", "./models")
 
         logger.info("UpdateSettings: model=%s device=%s compute_type=%s vad=%s",
@@ -65,6 +69,28 @@ class S(asr_service_pb2_grpc.FasterWhisperASRServicer):
                 message=f"Settings updated: model={model_name}, device={device}",
             )
         except Exception as e:
+            err_msg = str(e)
+            # cuBLAS 版本不匹配时自动降级 compute_type 重试
+            if "cublas" in err_msg.lower() and compute_type != "int8":
+                logger.warning("cuBLAS 加载失败 (%s)，降级到 int8 compute_type 重试", err_msg)
+                try:
+                    WhisperEngine.create_instance(model_name, device, "int8", download_root)
+                    self.engine = WhisperEngine.get_instance()
+                    loaded = self.engine.is_loaded if self.engine else False
+                    return asr_service_pb2.StatusResponse(
+                        model_loaded=loaded,
+                        current_model=model_name,
+                        gpu_available=(device == "cuda"),
+                        device=device,
+                        message=f"Settings updated (fallback to int8): model={model_name}, device={device}",
+                    )
+                except Exception as e2:
+                    logger.error("降级后仍失败: %s", e2)
+                    context.set_code(grpc.StatusCode.INTERNAL)
+                    context.set_details(str(e2))
+                    return asr_service_pb2.StatusResponse(
+                        model_loaded=False, message=f"Failed (fallback): {e2}"
+                    )
             logger.error("UpdateSettings 失败: %s", e)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
