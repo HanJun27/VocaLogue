@@ -1,0 +1,271 @@
+@startuml LingoAI 系统架构图
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+
+' ===== 颜色定义 =====
+skinparam component {
+  BackgroundColor #E8F0FE
+  BorderColor #4285F4
+  FontColor #1A1A1A
+}
+
+skinparam database {
+  BackgroundColor #FCE8E6
+  BorderColor #EA4335
+  FontColor #1A1A1A
+}
+
+skinparam cloud {
+  BackgroundColor #E6F4EA
+  BorderColor #34A853
+  FontColor #1A1A1A
+}
+
+skinparam rectangle {
+  BackgroundColor #FFF3E0
+  BorderColor #FBBC04
+  FontColor #1A1A1A
+}
+
+skinparam note {
+  BackgroundColor #F8F9FA
+  BorderColor #9AA0A6
+}
+
+' =============================================
+' 前端层 - Frontend
+' =============================================
+package "<color:#4285F4><b>前端层 (Frontend)</b></color>" as FE {
+  [ChatArea.vue] as FE_CHAT
+  [ScenarioSelection.vue] as FE_SCENE
+  [PracticeSummary.vue] as FE_SUMMARY
+  [SettingsPage.vue] as FE_SETTINGS
+  [ConversationHistory.vue] as FE_HISTORY
+  [ControlPanel.vue] as FE_CTRL
+  [PronunciationModal.vue] as FE_PRON
+  [PracticeModeModal.vue] as FE_MODE
+
+  package "<color:#4285F4>Service Layer</color>" as FE_SVC {
+    [VoiceService.ts] as FE_VOICE
+    [PipelineWebSocketAdapter.ts] as FE_WS
+    [WhisperASRService.ts] as FE_ASR
+    [audioPlayer.ts] as FE_AUDIO
+  }
+
+  package "<color:#4285F4>Utils & Config</color>" as FE_UTIL {
+    [vad.ts] as FE_VAD
+    [browserCompat.ts] as FE_COMPAT
+    [config.ts] as FE_CONFIG
+  }
+
+  [api.ts] as FE_API
+
+  FE_CHAT -down-> FE_VOICE
+  FE_CHAT -down-> FE_WS
+  FE_CHAT -down-> FE_AUDIO
+  FE_CHAT -down-> FE_VAD
+  FE_CTRL -down-> FE_VOICE
+  FE_CTRL -down-> FE_ASR
+  FE_SCENE -down-> FE_API
+  FE_SETTINGS -down-> FE_CONFIG
+  FE_HISTORY -down-> FE_API
+  FE_PRON -down-> FE_API
+  FE_API -down-> FE_SVC
+}
+
+' =============================================
+' 通信协议
+' =============================================
+rectangle "<color:#FBBC04><b>HTTP REST</b></color>\nREST API" as HTTP
+rectangle "<color:#FBBC04><b>WebSocket</b></color>\n流式音频 + 控制帧" as WS
+rectangle "<color:#FBBC04><b>SSE</b></color>\n流式 LLM Token" as SSE
+
+FE_API --> HTTP : JSON
+FE_WS --> WS : 二进制音频
+FE_CHAT --> SSE : EventStream
+
+' =============================================
+' 后端层 - Spring Boot
+' =============================================
+package "<color:#4285F4><b>后端层 (Spring Boot :8080)</b></color>" as BE {
+  ' --- Controller 层 ---
+  package "<color:#34A853>Controller</color>" as BE_CTRL {
+    [ConversationController] as CTRL_CONV
+    [PracticeController] as CTRL_PRAC
+    [ScenarioController] as CTRL_SCENE
+    [PronunciationController] as CTRL_PRON
+    [WhisperController] as CTRL_ASR
+    [AsrSettingsController] as CTRL_ASR_SET
+    [AiSettingsController] as CTRL_AI_SET
+    [PipelineStatusController] as CTRL_STATUS
+    [AudioController] as CTRL_AUDIO
+    [VoiceTestController] as CTRL_VOICE_TEST
+  }
+
+  ' --- Service 层 ---
+  package "<color:#34A853>Service</color>" as BE_SVC {
+    [ConversationService] as SVC_CONV
+    [ScenarioService] as SVC_SCENE
+    [PronunciationService] as SVC_PRON
+
+    package "<color:#34A853>AI Pipeline</color>" as SVC_AI {
+      [ConversationPipelineService] as SVC_PIPELINE
+      [SessionCoordinator] as SVC_COORD
+      [LlmService] as SVC_LLM
+      [TtsService] as SVC_TTS
+      [AsrService] as SVC_ASR
+      [WhisperService] as SVC_WHISPER
+      [EvaluationService] as SVC_EVAL
+    }
+  }
+
+  ' --- 客户端 ---
+  package "<color:#34A853>Clients</color>" as BE_CLI {
+    [FasterWhisperGrpcClient] as CLI_WHISPER
+    [LocalTtsClient] as CLI_TTS
+    [Wav2vec2PronunciationClient] as CLI_PRON
+  }
+
+  ' --- Config ---
+  [AiConfig] as BE_CONFIG
+
+  ' Controller -> Service 调用关系
+  CTRL_CONV -down-> SVC_CONV
+  CTRL_CONV -down-> SVC_EVAL
+  CTRL_PRAC -down-> SVC_PIPELINE
+  CTRL_PRAC -down-> SVC_LLM
+  CTRL_SCENE -down-> SVC_SCENE
+  CTRL_PRON -down-> CLI_PRON
+  CTRL_ASR -down-> SVC_WHISPER
+  CTRL_ASR -down-> CLI_WHISPER
+  CTRL_ASR_SET -down-> CLI_WHISPER
+  CTRL_AI_SET -down-> SVC_PIPELINE
+  CTRL_STATUS -down-> CLI_TTS
+  CTRL_STATUS -down-> SVC_COORD
+  CTRL_STATUS -down-> BE_CONFIG
+  SVC_CONV -down-> SVC_PIPELINE
+  SVC_CONV -down-> SVC_EVAL
+  SVC_PIPELINE -down-> SVC_ASR
+  SVC_PIPELINE -down-> SVC_LLM
+  SVC_PIPELINE -down-> SVC_TTS
+  SVC_TTS -down-> CLI_TTS
+  SVC_ASR -down-> CLI_WHISPER
+
+  ' 对外连接
+  CLI_WHISPER --> GRPC
+  CLI_TTS --> TTS_HTTP
+  CLI_PRON --> PRON_HTTP
+  SVC_LLM --> LLM_HTTP
+}
+
+' =============================================
+' 数据存储
+' =============================================
+database "<color:#EA4335><b>PostgreSQL 15</b></color>\n:5432" as DB {
+  [scenarios] as DB_SCENE
+  [conversations] as DB_CONV
+  [messages] as DB_MSG
+  [users] as DB_USER
+  [user_progress] as DB_PROGRESS
+}
+
+database "<color:#EA4335><b>Redis 7</b></color>\n:6379" as REDIS {
+  [会话缓存] as REDIS_SESSION
+  [管线配置] as REDIS_CONFIG
+  [评价缓存] as REDIS_EVAL
+}
+
+SVC_CONV -down-> DB
+SVC_CONV -down-> REDIS
+SVC_SCENE -down-> DB
+SVC_PIPELINE -down-> REDIS
+SVC_EVAL -down-> DB
+
+' =============================================
+' Python 微服务层
+' =============================================
+package "<color:#4285F4><b>AI 微服务层 (Python)</b></color>" as PY {
+  [<color:#34A853><b>ASR Service</b></color>\nFaster-Whisper\ngRPC :50051] as ASR_SVC
+  [<color:#34A853><b>TTS Service</b></color>\nPiper / Edge TTS\nREST :8000] as TTS_SVC
+  [<color:#34A853><b>Pronunciation Service</b></color>\nWav2Vec2\REST :8002] as PRON_SVC
+}
+
+note right of ASR_SVC
+  模型: large-v2/medium
+  支持 GPU (CUDA) / CPU
+  int8 量化加速
+end note
+
+note right of TTS_SVC
+  Piper: 本地离线 TTS
+  Edge TTS: 微软在线 TTS
+  双引擎自动切换
+end note
+
+note right of PRON_SVC
+  基于 Wav2Vec2
+  CTC 强制对齐
+  音素级评分
+end note
+
+' gRPC 连接
+rectangle "<color:#FBBC04><b>gRPC</b></color>\n:50051" as GRPC
+rectangle "<color:#FBBC04><b>HTTP</b></color>\n:8000" as TTS_HTTP
+rectangle "<color:#FBBC04><b>HTTP</b></color>\n:8002" as PRON_HTTP
+
+GRPC -down-> ASR_SVC
+TTS_HTTP -down-> TTS_SVC
+PRON_HTTP -down-> PRON_SVC
+
+' =============================================
+' 外部 AI 服务
+' =============================================
+cloud "<color:#34A853><b>外部 AI 服务</b></color>" as CLOUD {
+  [OpenAI] as C_OPENAI
+  [DeepSeek] as C_DEEPSEEK
+  [智谱 GLM] as C_GLM
+  [通义千问] as C_QWEN
+  [豆包 Realtime] as C_DOUBAO
+}
+
+rectangle "<color:#FBBC04><b>LLM HTTP</b></color>\n/api/chat" as LLM_HTTP
+
+LLM_HTTP -up-> C_OPENAI
+LLM_HTTP -up-> C_DEEPSEEK
+LLM_HTTP -up-> C_GLM
+LLM_HTTP -up-> C_QWEN
+LLM_HTTP -up-> C_DOUBAO
+
+' =============================================
+' 容器编排
+' =============================================
+package "<color:#4285F4><b>Docker Compose</b></color>" as DOCKER {
+  [postgres:15-alpine] as D_POSTGRES
+  [redis:7-alpine] as D_REDIS
+  [asr-service] as D_ASR
+  [tts-service] as D_TTS
+}
+
+D_POSTGRES --> DB : 映射卷
+D_REDIS --> REDIS : 映射卷
+D_ASR --> ASR_SVC : 构建
+D_TTS --> TTS_SVC : 构建
+
+' =============================================
+' 图例
+' =============================================
+legend right
+  <color:#4285F4><b>图例</b></color>
+  ---- 
+  <#E8F0FE>  前端/后端/微服务
+  <#FCE8E6>  数据存储
+  <#E6F4EA>  外部服务
+  <#FFF3E0>  通信协议
+  <#FBBC04>  接口
+end legend
+
+@enduml
